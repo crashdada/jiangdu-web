@@ -197,7 +197,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.1.0 web';
+  $('ver').textContent = 'v0.1.1 web';
 }
 
 function groupCard(g, i) {
@@ -562,6 +562,9 @@ async function recognizeFile(file) {
 
 function bind() {
   $('btn-settings').onclick = () => {
+    // 万一 localStorage 里存了空串，这里再兜一次底
+    state.settings.base = state.settings.base || 'https://api.deepseek.com';
+    state.settings.model = state.settings.model || 'deepseek-flash';
     $('s-base').value = state.settings.base;
     $('s-model').value = state.settings.model;
     $('s-key').value = state.settings.key;
