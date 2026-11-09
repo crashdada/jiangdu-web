@@ -138,6 +138,8 @@ main { padding: 0 12px 40px; }
   align-items: flex-end;
   z-index: 20;
 }
+/* hidden 属性靠 display:none 生效，必须显式压回来，否则上面的 flex 会把它顶掉 */
+.modal[hidden] { display: none; }
 .sheet {
   width: 100%;
   max-height: 82vh;

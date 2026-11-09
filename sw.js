@@ -1,5 +1,5 @@
 /* 只缓存自家静态资源；API 请求一律不缓存 */
-const CACHE = 'jiangdu-v2';
+const CACHE = 'jiangdu-v3';
 const ASSETS = [
   './',
   './index.html',

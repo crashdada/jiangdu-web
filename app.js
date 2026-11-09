@@ -197,7 +197,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.1.1 web';
+  $('ver').textContent = 'v0.1.2 web';
 }
 
 function groupCard(g, i) {
@@ -659,6 +659,11 @@ function updateHint() {
 bind();
 render();
 updateHint();
+
+// 页面加载时就把设置框填好，万一弹层意外露出来也不会是空白的
+$('s-base').value = state.settings.base || 'https://api.deepseek.com';
+$('s-model').value = state.settings.model || 'deepseek-flash';
+$('s-key').value = state.settings.key || '';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
