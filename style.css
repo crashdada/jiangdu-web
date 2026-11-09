@@ -1,0 +1,185 @@
+/* 简化的 Material 观感：圆角卡片、紫色主色 */
+:root {
+  --primary: #6750a4;
+  --primary-weak: #e8def8;
+  --on-primary: #ffffff;
+  --surface: #fef7ff;
+  --card: #f3edf7;
+  --text: #1d1b20;
+  --muted: #6f6b75;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+.topbar h1 { font-size: 22px; font-weight: 500; margin: 0; }
+
+main { padding: 0 12px 40px; }
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.score { background: var(--primary-weak); margin-bottom: 12px; }
+.score .label { font-size: 13px; color: var(--muted); }
+.score .big { font-size: 44px; font-weight: 700; line-height: 1.1; margin: 2px 0; }
+.score .sub { font-size: 14px; color: var(--muted); }
+
+.actions { display: flex; gap: 8px; margin: 12px 0 6px; }
+
+.btn {
+  flex: 1;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+}
+.btn.primary { background: var(--primary); color: var(--on-primary); }
+.btn:disabled { opacity: .5; }
+.btn:active { filter: brightness(.94); }
+
+.link {
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 15px;
+  padding: 6px;
+  font-family: inherit;
+}
+
+.hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 6px 2px; }
+
+.section { font-size: 14px; font-weight: 500; margin: 18px 2px 8px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #cac4d0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+.chip[aria-pressed="true"] {
+  background: var(--primary-weak);
+  border-color: transparent;
+  color: #21005d;
+}
+
+.groups { display: flex; flex-direction: column; gap: 8px; }
+
+.group {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.group .row1 { display: flex; align-items: center; justify-content: space-between; }
+.group .name { font-weight: 600; font-size: 16px; }
+.group .hu { font-weight: 600; }
+.group .row2 { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.group .row2 .txt { font-size: 13px; color: var(--muted); }
+.group .spacer { flex: 1; }
+.group .tag { font-size: 12px; color: var(--primary); margin-top: 6px; }
+
+.small-btn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 6px 8px;
+}
+
+.empty { color: var(--muted); font-size: 13px; }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28px;
+}
+.ver { font-size: 12px; color: var(--muted); }
+
+/* 底部弹层 */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .35);
+  display: flex;
+  align-items: flex-end;
+  z-index: 20;
+}
+.sheet {
+  width: 100%;
+  max-height: 82vh;
+  overflow: auto;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.sheet label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0;
+}
+.sheet input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #cac4d0;
+  background: #fff;
+  font-family: inherit;
+}
+
+.tile-row { display: flex; align-items: center; gap: 4px; margin: 4px 0; }
+.tile-row .head { width: 22px; font-size: 13px; color: var(--muted); }
+.tile {
+  flex: 1;
+  padding: 14px 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text);
+}
+.tile:active { background: var(--primary-weak); }

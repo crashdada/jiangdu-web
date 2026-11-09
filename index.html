@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1a">
+<title>江都记胡</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="江都记胡">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>江都记胡</h1>
+  <button class="link" id="btn-settings">设置</button>
+</header>
+
+<main>
+  <section class="card score" id="score">
+    <div class="label">最终分</div>
+    <div class="big" id="score-num">0</div>
+    <div class="sub" id="score-sub">胡子 0 × 2^0 = ×1</div>
+  </section>
+
+  <div class="actions">
+    <button class="btn primary" id="btn-cam">拍照识别</button>
+    <button class="btn" id="btn-pick">从相册选</button>
+  </div>
+  <p class="hint" id="hint">摆法：3 张一行 = 碰 ｜ 3 张品字（上横下竖）= 暗刻 ｜ 4 张一行 = 明杠 ｜ 3 背 1 面 = 暗杠</p>
+  <p class="hint" id="rot-hint" hidden></p>
+
+  <h2 class="section">加组</h2>
+  <div class="chips" id="add-chips"></div>
+
+  <h2 class="section" id="groups-title">已录 0 组</h2>
+  <div id="groups" class="groups"></div>
+
+  <h2 class="section">花牌</h2>
+  <div class="chips" id="flower-chips"></div>
+
+  <h2 class="section">我是哪家（决定门风 + 对应花）</h2>
+  <div class="chips" id="seat-chips"></div>
+
+  <h2 class="section">本局圈风</h2>
+  <div class="chips" id="wind-chips"></div>
+
+  <div class="footer">
+    <button class="link" id="btn-clear">清空重来</button>
+    <span class="ver" id="ver"></span>
+  </div>
+</main>
+
+<!-- 选牌 -->
+<div class="modal" id="picker" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <strong id="picker-title">选牌</strong>
+      <button class="link" id="picker-close">取消</button>
+    </div>
+    <div id="picker-body"></div>
+  </div>
+</div>
+
+<!-- 设置 -->
+<div class="modal" id="settings" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <strong>云端识别设置</strong>
+      <button class="link" id="settings-close">关闭</button>
+    </div>
+    <label>接口地址<input id="s-base" type="url" autocomplete="off"></label>
+    <label>模型<input id="s-model" type="text" autocomplete="off"></label>
+    <label>API Key<input id="s-key" type="password" autocomplete="off" placeholder="留空则只能手动录牌"></label>
+    <p class="hint">Key 只存在这台手机的浏览器里，直接发给 DeepSeek，不经过任何中转。</p>
+    <div class="actions">
+      <button class="btn" id="s-test">测试连接</button>
+      <button class="btn primary" id="s-save">保存</button>
+    </div>
+    <p class="hint" id="s-result"></p>
+  </div>
+</div>
+
+<input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="file-pick" accept="image/*" hidden>
+
+<script src="app.js"></script>
+</body>
+</html>

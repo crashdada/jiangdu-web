@@ -1,0 +1,664 @@
+'use strict';
+
+/* ============ 规则引擎（与 Kotlin 版逐行对应） ============ */
+
+const HONORS = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'];
+const FLOWER_HU = 4;
+const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const HONOR_CN = ['东', '南', '西', '北', '中', '发', '白'];
+
+function parseTile(code) {
+  const h = HONORS.indexOf(code);
+  if (h >= 0) return { code, suit: 'H', rank: h + 1 };
+  const m = /^([1-9])([wtb])$/.exec(code);
+  if (!m) throw new Error('bad tile: ' + code);
+  return { code, suit: m[2], rank: Number(m[1]) };
+}
+
+function tileFacts(code) {
+  const t = parseTile(code);
+  const isHonor = t.suit === 'H';
+  const isWind = isHonor && t.rank <= 4;
+  const isDragon = isHonor && t.rank >= 5;
+  const isMiddle = !isHonor && t.rank >= 2 && t.rank <= 8;
+  return { ...t, isHonor, isWind, isDragon, isMiddle };
+}
+
+function groupHuZi(g) {
+  const f = tileFacts(g.tile);
+  const base = f.isMiddle ? 2 : 4;
+  const jokers = g.jokers || 0;
+  switch (g.kind) {
+    case 'PAIR': return (f.isDragon || f.isWind) ? 2 : 0;
+    case 'MING_KE': return jokers > 0 ? base * 2 : base;
+    case 'AN_KE': return base * 2;
+    case 'MING_GANG': return base * 4;
+    case 'AN_GANG': return base * 8;
+    default: return 0;
+  }
+}
+
+function huZi(hand) {
+  const fl = (hand.flowers || []).length * FLOWER_HU;
+  return fl + (hand.groups || []).reduce((s, g) => s + groupHuZi(g), 0);
+}
+
+function fan(hand) {
+  let n = 0;
+  for (const g of hand.groups || []) {
+    if (g.kind === 'PAIR') continue;
+    const f = tileFacts(g.tile);
+    if (f.isDragon) n += 1;
+    const tags = g.fanTags || [];
+    if (tags.includes('MEN_FENG')) n += 1;
+    if (tags.includes('QUAN_FENG')) n += 1;
+  }
+  const own = hand.ownFlower;
+  if (own && (hand.flowers || []).includes(own)) n += 1;
+  return n;
+}
+
+function multiplier(f) { return 2 ** f; }
+
+function tileLabel(code) {
+  const f = tileFacts(code);
+  if (f.isHonor) return HONOR_CN[f.rank - 1];
+  const suitCn = { w: '万', t: '条', b: '筒' }[f.suit];
+  return CN[f.rank - 1] + suitCn;
+}
+
+function kindLabel(k) {
+  return { PAIR: '对子', MING_KE: '碰', AN_KE: '暗刻', MING_GANG: '明杠', AN_GANG: '暗杠' }[k];
+}
+
+/* ============ 状态 ============ */
+
+const FLOWERS = [
+  { code: 'chun', label: '春' },
+  { code: 'xia', label: '夏' },
+  { code: 'qiu', label: '秋' },
+  { code: 'dong', label: '冬' },
+];
+
+const SEATS = ['庄 东/春', '下家 南/夏', '对家 西/秋', '末家 北/冬'];
+const WINDS = ['东', '南', '西', '北'];
+
+const state = {
+  groups: [],
+  flowers: [],
+  seat: null,
+  roundWind: null,
+  settings: loadSettings(),
+  lastRot: null,
+  busy: false,
+};
+
+function loadSettings() {
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem('jd_settings') || '{}'); } catch (e) { raw = {}; }
+  return {
+    base: raw.base || 'https://api.deepseek.com',
+    model: raw.model || 'deepseek-flash',
+    key: raw.key || '',
+  };
+}
+
+function saveSettings() {
+  localStorage.setItem('jd_settings', JSON.stringify(state.settings));
+}
+
+/* 门风与对应花是同一条位置关系：庄=东+春、下家=南+夏、对家=西+秋、末家=北+冬 */
+function seatWind() { return state.seat == null ? null : HONORS[state.seat]; }
+function ownFlower() { return state.seat == null ? null : FLOWERS[state.seat].code; }
+
+function currentHand() {
+  const sw = seatWind();
+  const rw = state.roundWind == null ? null : HONORS[state.roundWind];
+  const groups = state.groups.map((g) => {
+    const tags = [];
+    if (sw && g.tile === sw) tags.push('MEN_FENG');
+    if (rw && g.tile === rw) tags.push('QUAN_FENG');
+    return { ...g, fanTags: tags };
+  });
+  return { groups, flowers: state.flowers.slice(), ownFlower: ownFlower() };
+}
+
+/* ============ 渲染 ============ */
+
+const $ = (id) => document.getElementById(id);
+
+function render() {
+  const hand = currentHand();
+  const hz = huZi(hand);
+  const fn = fan(hand);
+  const mul = multiplier(fn);
+
+  $('score-num').textContent = hz * mul;
+  $('score-sub').textContent = `胡子 ${hz} × 2^${fn} = ×${mul}`;
+
+  // 加组
+  const addChips = $('add-chips');
+  addChips.innerHTML = '';
+  ['PAIR', 'MING_KE', 'AN_KE', 'MING_GANG', 'AN_GANG'].forEach((k) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = kindLabel(k);
+    b.onclick = () => openPicker(k);
+    addChips.appendChild(b);
+  });
+
+  // 组列表
+  $('groups-title').textContent = `已录 ${state.groups.length} 组`;
+  const box = $('groups');
+  box.innerHTML = '';
+  if (!state.groups.length) {
+    box.innerHTML = '<p class="empty">还没有组。可以拍照识别，也可以手动加。</p>';
+  }
+  state.groups.forEach((g, i) => box.appendChild(groupCard(g, i)));
+
+  // 花牌
+  const fl = $('flower-chips');
+  fl.innerHTML = '';
+  FLOWERS.forEach((f) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = f.label;
+    b.setAttribute('aria-pressed', state.flowers.includes(f.code) ? 'true' : 'false');
+    b.onclick = () => {
+      const k = state.flowers.indexOf(f.code);
+      if (k >= 0) state.flowers.splice(k, 1); else state.flowers.push(f.code);
+      render();
+    };
+    fl.appendChild(b);
+  });
+
+  // 我是哪家
+  const seatBox = $('seat-chips');
+  seatBox.innerHTML = '';
+  SEATS.forEach((label, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = label;
+    b.style.fontSize = '12px';
+    b.setAttribute('aria-pressed', state.seat === i ? 'true' : 'false');
+    b.onclick = () => { state.seat = state.seat === i ? null : i; render(); };
+    seatBox.appendChild(b);
+  });
+
+  // 圈风
+  const windBox = $('wind-chips');
+  windBox.innerHTML = '';
+  WINDS.forEach((label, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', state.roundWind === i ? 'true' : 'false');
+    b.onclick = () => { state.roundWind = state.roundWind === i ? null : i; render(); };
+    windBox.appendChild(b);
+  });
+
+  $('ver').textContent = 'v0.1.0 web';
+}
+
+function groupCard(g, i) {
+  const el = document.createElement('div');
+  el.className = 'group';
+
+  const row1 = document.createElement('div');
+  row1.className = 'row1';
+  row1.innerHTML = `<span class="name">${kindLabel(g.kind)} ${tileLabel(g.tile)}</span>
+                    <span class="hu">${groupHuZi(g)} 胡</span>`;
+  el.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'row2';
+
+  if (g.jokers > 0) {
+    const t = document.createElement('span');
+    t.className = 'txt';
+    t.textContent = `含百搭 ${g.jokers} 张（按暗刻算）`;
+    row2.appendChild(t);
+    const minus = document.createElement('button');
+    minus.className = 'small-btn';
+    minus.textContent = '−';
+    minus.onclick = () => {
+      g.jokers -= 1;
+      if (g.jokers <= 0) { g.jokers = 0; }
+      render();
+    };
+    row2.appendChild(minus);
+  }
+
+  const plus = document.createElement('button');
+  plus.className = 'small-btn';
+  plus.textContent = g.jokers === 0 ? '＋ 加百搭' : '＋';
+  plus.onclick = () => {
+    g.jokers = Math.min(3, g.jokers + 1);
+    g.kind = 'AN_KE'; // 百搭只能凑成 3 张的暗刻
+    render();
+  };
+  row2.appendChild(plus);
+
+  const sp = document.createElement('span');
+  sp.className = 'spacer';
+  row2.appendChild(sp);
+
+  const del = document.createElement('button');
+  del.className = 'small-btn';
+  del.textContent = '删除';
+  del.onclick = () => { state.groups.splice(i, 1); render(); };
+  row2.appendChild(del);
+
+  el.appendChild(row2);
+
+  const sw = seatWind();
+  const rw = state.roundWind == null ? null : HONORS[state.roundWind];
+  const tags = [];
+  if (sw && g.tile === sw) tags.push('门风');
+  if (rw && g.tile === rw) tags.push('圈风');
+  if (tags.length) {
+    const t = document.createElement('div');
+    t.className = 'tag';
+    t.textContent = '计番：' + tags.join(' + ');
+    el.appendChild(t);
+  }
+
+  return el;
+}
+
+/* ============ 选牌 ============ */
+
+let pickingKind = null;
+
+function openPicker(kind) {
+  pickingKind = kind;
+  $('picker-title').textContent = '选牌 · ' + kindLabel(kind);
+  const body = $('picker-body');
+  body.innerHTML = '';
+
+  const rows = [
+    { head: '万', suit: 'w' },
+    { head: '条', suit: 't' },
+    { head: '筒', suit: 'b' },
+  ];
+  rows.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'tile-row';
+    const h = document.createElement('span');
+    h.className = 'head';
+    h.textContent = r.head;
+    row.appendChild(h);
+    for (let i = 1; i <= 9; i++) {
+      const b = document.createElement('button');
+      b.className = 'tile';
+      b.textContent = CN[i - 1];
+      b.onclick = () => pickTile(`${i}${r.suit}`);
+      row.appendChild(b);
+    }
+    body.appendChild(row);
+  });
+
+  const row = document.createElement('div');
+  row.className = 'tile-row';
+  const h = document.createElement('span');
+  h.className = 'head';
+  h.textContent = '字';
+  row.appendChild(h);
+  HONORS.forEach((code) => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.textContent = tileLabel(code);
+    b.onclick = () => pickTile(code);
+    row.appendChild(b);
+  });
+  body.appendChild(row);
+
+  $('picker').hidden = false;
+}
+
+function pickTile(tile) {
+  state.groups.push({ kind: pickingKind, tile, jokers: 0 });
+  $('picker').hidden = true;
+  render();
+}
+
+/* ============ 云端识别 ============ */
+
+const ROT_PROMPT = `这张图是麻将牌照片。牌面上的字（萬、東、發 等）现在是不是正立的？
+如果需要转动才能正立，需要**顺时针**转多少度？
+只回答一个数字：0、90、180 或 270。不要任何其他文字。`;
+
+const PROMPT = `你是麻将牌识别器。这是一手江都麻将的摆牌，牌面朝上分组摆好。
+
+只输出 JSON，不要任何解释、不要代码块围栏：
+{"groups":[{"kind":"暗刻","tiles":["四条","四条","四条"]}],"flowers":["冬"],"note":""}
+
+规则：
+- tiles：把这一组里的牌逐张列出来，百搭就写「百搭」。张数以你列出的张数为准。
+- kind 按摆法判断：
+  · 3 张排成一条直线 → 碰
+  · 3 张摆成品字（下面 2 张竖立并排，上面 1 张横躺）→ 暗刻
+  · 4 张一条直线 → 明杠
+  · 4 张里 3 张背面朝上、1 张正面 → 暗杠
+  · 2 张 → 对子
+- 暗杠特别容易漏：有 3 张背面（蓝色）并排、旁边 1 张正面时，一定要报成一组暗杠，
+  tiles 填 4 张，tile 用那张正面的牌名。漏掉一个暗杠会少算 32 胡。
+- 含百搭的组一定是暗刻：百搭只能凑 3 张的暗刻，不能用来碰。
+- tile 名用：一筒…九筒、一条…九条、一万…九万、东风、南风、西风、北风、红中、发财、白板
+- flowers 里放 春、夏、秋、冬，没有就空数组
+- 顺子和散牌不要输出（0 胡）
+
+注意：
+- 条是细长的竹节，筒是圆点，两者别混。
+- 同一组里的几张牌，方向可能并不一致 —— 有人会把其中一张摆成倒的或横的。
+  倒着的「北」还是北。请逐张单独判断方向，不要假设整组朝向一致。
+`;
+
+async function apiCall(content, maxTokens) {
+  const s = state.settings;
+  if (!s.key) throw new Error('还没填 API Key，点右上角「设置」');
+  const res = await fetch(s.base.replace(/\/+$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + s.key,
+    },
+    body: JSON.stringify({
+      model: s.model,
+      temperature: 0,
+      max_tokens: maxTokens || 1500,
+      thinking: { type: 'disabled' },
+      messages: [{ role: 'user', content }],
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+  const j = JSON.parse(text);
+  const c = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!c) throw new Error('模型正文为空');
+  return c;
+}
+
+function imageContent(dataUrl) {
+  return { type: 'image_url', image_url: { url: dataUrl } };
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片读取失败'));
+    img.src = src;
+  });
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('文件读取失败'));
+    r.readAsDataURL(file);
+  });
+}
+
+function canvasOf(img, maxSide) {
+  const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
+function rotateCanvas(src, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const swap = deg === 90 || deg === 270;
+  const c = document.createElement('canvas');
+  c.width = swap ? src.height : src.width;
+  c.height = swap ? src.width : src.height;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  return c;
+}
+
+function jpeg(canvas, q) {
+  return canvas.toDataURL('image/jpeg', q || 0.92);
+}
+
+async function detectRotation(canvas) {
+  try {
+    const small = canvasToSmall(canvas, 700);
+    const txt = await apiCall(
+      [{ type: 'text', text: ROT_PROMPT }, imageContent(jpeg(small))],
+      8
+    );
+    if (txt.includes('270')) return 270;
+    if (txt.includes('180')) return 180;
+    if (txt.includes('90')) return 90;
+    return 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function canvasToSmall(canvas, maxSide) {
+  const s = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(canvas.width * s);
+  c.height = Math.round(canvas.height * s);
+  c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+  return c;
+}
+
+async function isUpright(canvas) {
+  try {
+    const txt = await apiCall(
+      [
+        { type: 'text', text: '图中麻将牌上的汉字现在是正立的吗？只回答「是」或「否」。' },
+        imageContent(jpeg(canvasToSmall(canvas, 700))),
+      ],
+      8
+    );
+    return !txt.includes('否');
+  } catch (e) {
+    return true;
+  }
+}
+
+function kindOf(s) {
+  const m = { 碰: 'MING_KE', 明刻: 'MING_KE', 暗刻: 'AN_KE', 刻: 'AN_KE', 明杠: 'MING_GANG', 暗杠: 'AN_GANG', 对子: 'PAIR' };
+  return m[(s || '').trim()] || null;
+}
+
+function fixKind(kind, count) {
+  if (count < 2 || count > 4) return kind;
+  const expect = { PAIR: 2, MING_KE: 3, AN_KE: 3, MING_GANG: 4, AN_GANG: 4 }[kind];
+  if (count === expect) return kind;
+  if (count === 2) return 'PAIR';
+  if (count === 3) return kind === 'AN_GANG' || kind === 'AN_KE' ? 'AN_KE' : 'MING_KE';
+  return kind === 'AN_GANG' || kind === 'AN_KE' ? 'AN_GANG' : 'MING_GANG';
+}
+
+function tileOf(s) {
+  const t = (s || '').trim();
+  const honors = { 东风: 'E', 南风: 'S', 西风: 'W', 北风: 'N', 红中: 'Z', 中: 'Z', 发财: 'F', 发: 'F', 白板: 'B', 白: 'B' };
+  if (honors[t]) return honors[t];
+  for (let i = 0; i < 9; i++) {
+    if (t.length === 2 && t[0] === CN[i]) {
+      const suit = { 筒: 'b', 饼: 'b', 条: 't', 索: 't', 万: 'w', 萬: 'w' }[t[1]];
+      return suit ? `${i + 1}${suit}` : null;
+    }
+  }
+  return /^[1-9][wtb]$/.test(t) ? t : null;
+}
+
+function flowerOf(s) {
+  return { 春: 'chun', 夏: 'xia', 秋: 'qiu', 冬: 'dong' }[(s || '').trim()] || null;
+}
+
+function parseResult(raw) {
+  const a = raw.indexOf('{');
+  const b = raw.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('模型没有返回 JSON：' + raw.slice(0, 200));
+  const json = JSON.parse(raw.slice(a, b + 1));
+
+  const groups = [];
+  for (const o of json.groups || []) {
+    const rawKind = kindOf(o.kind);
+    if (!rawKind) continue;
+    let names = Array.isArray(o.tiles) ? o.tiles.slice() : [];
+    if (!names.length && o.tile) {
+      const n = Math.min(4, Math.max(1, o.count || 3));
+      names = Array(n).fill(o.tile);
+    }
+    if (!names.length) continue;
+    const isJoker = (s) => ['百搭', '百搭牌'].includes((s || '').trim());
+    const jokers = Math.min(4, names.filter(isJoker).length);
+    const real = names.map((s) => (s || '').trim()).find((s) => !isJoker(s));
+    if (!real) continue;
+    const tile = tileOf(real);
+    if (!tile) continue;
+    const kind = jokers > 0 ? 'AN_KE' : fixKind(rawKind, names.length);
+    groups.push({ kind, tile, jokers });
+  }
+
+  const flowers = [];
+  for (const f of json.flowers || []) {
+    const c = flowerOf(f);
+    if (c && !flowers.includes(c)) flowers.push(c);
+  }
+  return { groups, flowers };
+}
+
+async function recognizeFile(file) {
+  const url = await fileToDataUrl(file);
+  const img = await loadImage(url);
+  const base = canvasOf(img, 1600);
+
+  let deg = await detectRotation(base);
+  let upright = deg ? rotateCanvas(base, deg) : base;
+  if (deg && !(await isUpright(upright))) {
+    deg = (deg + 180) % 360;
+    upright = rotateCanvas(base, deg);
+  }
+  state.lastRot = deg;
+
+  const txt = await apiCall([
+    { type: 'text', text: PROMPT },
+    imageContent(jpeg(upright)),
+  ]);
+  const r = parseResult(txt);
+
+  state.groups = r.groups;
+  state.flowers = r.flowers;
+  render();
+
+  if (!r.groups.length) alert('模型没认出任何牌组。请确认牌是正面朝上、分组摆好的。');
+}
+
+/* ============ 事件绑定 ============ */
+
+function bind() {
+  $('btn-settings').onclick = () => {
+    $('s-base').value = state.settings.base;
+    $('s-model').value = state.settings.model;
+    $('s-key').value = state.settings.key;
+    $('s-result').textContent = '';
+    $('settings').hidden = false;
+  };
+  $('settings-close').onclick = () => { $('settings').hidden = true; };
+  $('s-save').onclick = () => {
+    state.settings = {
+      base: $('s-base').value.trim() || 'https://api.deepseek.com',
+      model: $('s-model').value.trim() || 'deepseek-flash',
+      key: $('s-key').value.trim(),
+    };
+    saveSettings();
+    $('settings').hidden = true;
+    updateHint();
+  };
+  $('s-test').onclick = async () => {
+    const save = state.settings;
+    state.settings = {
+      base: $('s-base').value.trim() || 'https://api.deepseek.com',
+      model: $('s-model').value.trim() || 'deepseek-flash',
+      key: $('s-key').value.trim(),
+    };
+    $('s-result').textContent = '测试中…';
+    try {
+      const c = await apiCall('只回复两个字：正常', 32);
+      $('s-result').textContent = '连接正常，模型回复：' + c.trim();
+    } catch (e) {
+      $('s-result').textContent = '失败：' + e.message;
+    }
+    state.settings = save;
+  };
+
+  $('picker-close').onclick = () => { $('picker').hidden = true; };
+
+  $('btn-cam').onclick = () => $('file-cam').click();
+  $('btn-pick').onclick = () => $('file-pick').click();
+
+  const onFile = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    if (!state.settings.key) {
+      alert('还没填 API Key，点右上角「设置」');
+      return;
+    }
+    setBusy(true);
+    try {
+      await recognizeFile(f);
+    } catch (e) {
+      alert('识别失败：' + (e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  $('file-cam').onchange = onFile;
+  $('file-pick').onchange = onFile;
+
+  $('btn-clear').onclick = () => {
+    if (!confirm('清空本手牌？')) return;
+    state.groups = [];
+    state.flowers = [];
+    state.seat = null;
+    state.roundWind = null;
+    render();
+  };
+}
+
+function setBusy(v) {
+  state.busy = v;
+  $('btn-cam').disabled = v;
+  $('btn-pick').disabled = v;
+  if (v) {
+    $('rot-hint').hidden = false;
+    $('rot-hint').textContent = '识别中…';
+  } else {
+    updateHint();
+  }
+}
+
+function updateHint() {
+  const el = $('rot-hint');
+  if (state.lastRot == null) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.textContent = '上次识别：图片转正 ' + state.lastRot + '°';
+}
+
+bind();
+render();
+updateHint();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
