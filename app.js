@@ -1,64 +1,12 @@
 'use strict';
 
-/* ============ 规则引擎（与 Kotlin 版逐行对应） ============ */
+import { huZi, fan, multiplier, groupHuZi, tileFacts } from './engine.js';
+
+/* ============ 展示用文字 ============ */
 
 const HONORS = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'];
-const FLOWER_HU = 4;
 const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const HONOR_CN = ['东', '南', '西', '北', '中', '发', '白'];
-
-function parseTile(code) {
-  const h = HONORS.indexOf(code);
-  if (h >= 0) return { code, suit: 'H', rank: h + 1 };
-  const m = /^([1-9])([wtb])$/.exec(code);
-  if (!m) throw new Error('bad tile: ' + code);
-  return { code, suit: m[2], rank: Number(m[1]) };
-}
-
-function tileFacts(code) {
-  const t = parseTile(code);
-  const isHonor = t.suit === 'H';
-  const isWind = isHonor && t.rank <= 4;
-  const isDragon = isHonor && t.rank >= 5;
-  const isMiddle = !isHonor && t.rank >= 2 && t.rank <= 8;
-  return { ...t, isHonor, isWind, isDragon, isMiddle };
-}
-
-function groupHuZi(g) {
-  const f = tileFacts(g.tile);
-  const base = f.isMiddle ? 2 : 4;
-  const jokers = g.jokers || 0;
-  switch (g.kind) {
-    case 'PAIR': return (f.isDragon || f.isWind) ? 2 : 0;
-    case 'MING_KE': return jokers > 0 ? base * 2 : base;
-    case 'AN_KE': return base * 2;
-    case 'MING_GANG': return base * 4;
-    case 'AN_GANG': return base * 8;
-    default: return 0;
-  }
-}
-
-function huZi(hand) {
-  const fl = (hand.flowers || []).length * FLOWER_HU;
-  return fl + (hand.groups || []).reduce((s, g) => s + groupHuZi(g), 0);
-}
-
-function fan(hand) {
-  let n = 0;
-  for (const g of hand.groups || []) {
-    if (g.kind === 'PAIR') continue;
-    const f = tileFacts(g.tile);
-    if (f.isDragon) n += 1;
-    const tags = g.fanTags || [];
-    if (tags.includes('MEN_FENG')) n += 1;
-    if (tags.includes('QUAN_FENG')) n += 1;
-  }
-  const own = hand.ownFlower;
-  if (own && (hand.flowers || []).includes(own)) n += 1;
-  return n;
-}
-
-function multiplier(f) { return 2 ** f; }
 
 function tileLabel(code) {
   const f = tileFacts(code);
@@ -118,7 +66,7 @@ function currentHand() {
     const tags = [];
     if (sw && g.tile === sw) tags.push('MEN_FENG');
     if (rw && g.tile === rw) tags.push('QUAN_FENG');
-    return { ...g, fanTags: tags };
+    return { ...g, fan: tags };
   });
   return { groups, flowers: state.flowers.slice(), ownFlower: ownFlower() };
 }
@@ -197,7 +145,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.1.2 web';
+  $('ver').textContent = 'v0.1.3 web';
 }
 
 function groupCard(g, i) {
