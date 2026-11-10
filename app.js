@@ -64,12 +64,15 @@ function ownFlower() { return state.seat == null ? null : FLOWERS[state.seat].co
 function currentHand() {
   const sw = seatWind();
   const rw = state.roundWind == null ? null : HONORS[state.roundWind];
-  const groups = state.groups.map((g) => {
-    const tags = [];
-    if (sw && g.tile === sw) tags.push('MEN_FENG');
-    if (rw && g.tile === rw) tags.push('QUAN_FENG');
-    return { ...g, fan: tags };
-  });
+  // 还没选牌名的组不参与算分
+  const groups = state.groups
+    .filter((g) => g.tile)
+    .map((g) => {
+      const tags = [];
+      if (sw && g.tile === sw) tags.push('MEN_FENG');
+      if (rw && g.tile === rw) tags.push('QUAN_FENG');
+      return { ...g, fan: tags };
+    });
   return { groups, flowers: state.flowers.slice(), ownFlower: ownFlower() };
 }
 
@@ -147,7 +150,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.3.2 web';
+  $('ver').textContent = 'v0.4.0 web';
 }
 
 function groupCard(g, i) {
@@ -156,8 +159,9 @@ function groupCard(g, i) {
 
   const row1 = document.createElement('div');
   row1.className = 'row1';
-  row1.innerHTML = `<span class="name">${kindLabel(g.kind)} ${tileLabel(g.tile)}</span>
-                    <span class="hu">${groupHuZi(g)} 胡</span>`;
+  const nameTxt = g.tile ? `${kindLabel(g.kind)} ${tileLabel(g.tile)}` : `${kindLabel(g.kind)} ？`;
+  const huTxt = g.tile ? `${groupHuZi(g)} 胡` : '点此选牌';
+  row1.innerHTML = `<span class="name">${nameTxt}</span><span class="hu">${huTxt}</span>`;
   row1.style.cursor = 'pointer';
   row1.onclick = () => openPicker(g.kind, i);
   el.appendChild(row1);

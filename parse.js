@@ -144,19 +144,18 @@ function findTileIn(line) {
 }
 
 /**
- * 从自然语言回答里抽组。
- * 认定规则：一行里同时出现「组型词」和「牌名」才算一组。
- * 张数由组型决定（暗杠/明杠 4，刻/碰 3，对子 2，花 1）。
+ * 解析「只报结构」的回答：类型 + 张数，没有牌名。
+ * 返回的组 tile 为 null，由用户在界面上点选补齐。
  */
 export function parseProse(raw) {
   const groups = [];
   const flowers = [];
   const dropped = [];
-  const seen = new Set();
+  let idx = 0;
 
   for (const rawLine of String(raw).split(/[\n；;]/)) {
-    const line = rawLine.replace(/^[\s\-*•\d.、)）]+/, '').trim();
-    if (!line || line.length > 200) continue;
+    const line = normalizeCn(rawLine.replace(/^[\s\-*•\d.、)）]+/, '').trim());
+    if (!line || line.length > 120) continue;
 
     let kind = null;
     for (const [w, k] of KIND_WORDS) {
@@ -167,33 +166,25 @@ export function parseProse(raw) {
     }
     if (!kind) continue;
 
+    const m = /(\d+)\s*张/.exec(line);
+    const count = m ? Number(m[1])
+      : kind === 'PAIR' ? 2 : kind === 'FLOWER' ? 1 : kind === 'AN_GANG' || kind === 'MING_GANG' ? 4 : 3;
+
     if (kind === 'FLOWER') {
-      // 「春夏秋冬之一」这种说法会同时命中四个字，不能照单全收
       const hit = ['春', '夏', '秋', '冬'].filter((f) => line.includes(f));
       if (hit.length === 1) {
         const c = flowerOf(hit[0]);
         if (c && !flowers.includes(c)) flowers.push(c);
-      } else if (hit.length > 1) {
-        dropped.push(`花牌不确定: ${line}`);
       }
       continue;
     }
 
+    // 有些回答会顺带写牌名，能认出来就先填上，认不出留空给用户点
     const tile = findTileIn(line);
-    if (!tile) {
-      dropped.push(`没找到牌名: ${line}`);
-      continue;
-    }
-    const count = COUNT_BY_KIND[kind];
-    const key = `${kind}|${tile}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const jokers = (line.match(/百搭/g) || []).length;
-    const kindFinal = jokers > 0 && count >= 3 ? 'AN_KE' : kind;
-    groups.push({ kind: kindFinal, tile, jokers: Math.min(jokers, 2), count, raw: [line] });
+    groups.push({ kind, tile: tile || null, jokers: 0, count, idx: idx++ });
   }
 
+  if (!groups.length) dropped.push('没有解析出任何组');
   return { groups, flowers, dropped, note: '' };
 }
 
