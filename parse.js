@@ -114,14 +114,30 @@ const TILE_WORDS = [
   ['幺鸡', '1t'], ['一索', '1t'],
 ];
 
+/** 模型常写繁体（發 / 東 / 萬 / 條），统一成简体再匹配 */
+export function normalizeCn(s) {
+  return String(s)
+    .replace(/發/g, '发')
+    .replace(/東/g, '东')
+    .replace(/萬/g, '万')
+    .replace(/條/g, '条')
+    .replace(/索/g, '条')
+    .replace(/餅/g, '饼')
+    .replace(/筒/g, '筒')
+    .replace(/紅/g, '红')
+    .replace(/財/g, '财')
+    .replace(/東南西北/g, '东南西北');
+}
+
 function findTileIn(line) {
+  const t = normalizeCn(line);
   for (const [w, code] of TILE_WORDS) {
-    if (line.includes(w)) return code;
+    if (t.includes(w)) return code;
   }
   // 一筒…九筒 / 一条…九条 / 一万…九万
   for (let i = 0; i < 9; i++) {
-    for (const [suffix, suit] of [['筒', 'b'], ['条', 't'], ['万', 'w'], ['萬', 'w'], ['索', 't'], ['饼', 'b']]) {
-      if (line.includes(CN[i] + suffix)) return `${i + 1}${suit}`;
+    for (const [suffix, suit] of [['筒', 'b'], ['条', 't'], ['万', 'w'], ['饼', 'b']]) {
+      if (t.includes(CN[i] + suffix)) return `${i + 1}${suit}`;
     }
   }
   return null;
