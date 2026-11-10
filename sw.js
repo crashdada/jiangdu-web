@@ -1,5 +1,5 @@
-/* 只缓存自家静态资源；API 请求一律不缓存 */
-const CACHE = 'jiangdu-v5';
+﻿/* 鍙紦瀛樿嚜瀹堕潤鎬佽祫婧愶紱API 璇锋眰涓€寰嬩笉缂撳瓨 */
+const CACHE = 'jiangdu-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -27,8 +27,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // 跨域（DeepSeek API）不碰，交给浏览器直连
-  if (url.origin !== location.origin) return;
+  // 璺ㄥ煙锛圖eepSeek API锛変笉纰帮紝浜ょ粰娴忚鍣ㄧ洿杩?  if (url.origin !== location.origin) return;
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();
@@ -37,3 +36,4 @@ self.addEventListener('fetch', (e) => {
     }))
   );
 });
+
