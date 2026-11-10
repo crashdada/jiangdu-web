@@ -79,8 +79,9 @@ export function parseResult(raw) {  const a = raw.indexOf('{');
       dropped.push(`牌名不认: ${real}`);
       continue;
     }
-    // 百搭只能凑成 3 张的暗刻，含百搭的组必然是暗刻
-    const kind = jokers > 0 ? 'AN_KE' : fixKind(rawKind, names.length);
+    // 百搭能凑 3 张的暗刻，也能凑 2 张的对子（真值里就有「对子 六筒含百搭」）。
+    // 所以只有张数 >= 3 才强制成暗刻。
+    const kind = jokers > 0 && names.length >= 3 ? 'AN_KE' : fixKind(rawKind, names.length);
     groups.push({ kind, tile, jokers, count: names.length, raw: names });
   }
 
@@ -173,7 +174,8 @@ export function parseProse(raw) {
     seen.add(key);
 
     const jokers = (line.match(/百搭/g) || []).length;
-    groups.push({ kind, tile, jokers: Math.min(jokers, 2), count, raw: [line] });
+    const kindFinal = jokers > 0 && count >= 3 ? 'AN_KE' : kind;
+    groups.push({ kind: kindFinal, tile, jokers: Math.min(jokers, 2), count, raw: [line] });
   }
 
   return { groups, flowers, dropped, note: '' };

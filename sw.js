@@ -1,5 +1,5 @@
 ﻿/* 鍙紦瀛樿嚜瀹堕潤鎬佽祫婧愶紱API 璇锋眰涓€寰嬩笉缂撳瓨 */
-const CACHE = 'jiangdu-v8';
+const CACHE = 'jiangdu-v9';
 const ASSETS = [
   './',
   './index.html',

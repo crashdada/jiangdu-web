@@ -147,7 +147,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.3.0 web';
+  $('ver').textContent = 'v0.3.1 web';
 }
 
 function groupCard(g, i) {
@@ -186,7 +186,8 @@ function groupCard(g, i) {
   plus.textContent = g.jokers === 0 ? '＋ 加百搭' : '＋';
   plus.onclick = () => {
     g.jokers = Math.min(3, g.jokers + 1);
-    g.kind = 'AN_KE'; // 百搭只能凑成 3 张的暗刻
+    // 百搭凑成 3 张就算暗刻；两张的对子（如「六筒+百搭」）仍是对子
+    if (g.jokers > 0 && g.kind !== 'PAIR') g.kind = 'AN_KE';
     render();
   };
   row2.appendChild(plus);
