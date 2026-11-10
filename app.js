@@ -147,7 +147,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.2.2 web';
+  $('ver').textContent = 'v0.3.0 web';
 }
 
 function groupCard(g, i) {
@@ -158,6 +158,8 @@ function groupCard(g, i) {
   row1.className = 'row1';
   row1.innerHTML = `<span class="name">${kindLabel(g.kind)} ${tileLabel(g.tile)}</span>
                     <span class="hu">${groupHuZi(g)} 胡</span>`;
+  row1.style.cursor = 'pointer';
+  row1.onclick = () => openPicker(g.kind, i);
   el.appendChild(row1);
 
   const row2 = document.createElement('div');
@@ -193,6 +195,18 @@ function groupCard(g, i) {
   sp.className = 'spacer';
   row2.appendChild(sp);
 
+  // 组型错了也能改：按顺序切换
+  const kindBtn = document.createElement('button');
+  kindBtn.className = 'small-btn';
+  kindBtn.textContent = '改类型';
+  kindBtn.onclick = () => {
+    const order = ['MING_KE', 'AN_KE', 'MING_GANG', 'AN_GANG', 'PAIR'];
+    const k = order.indexOf(g.kind);
+    g.kind = order[(k + 1) % order.length];
+    render();
+  };
+  row2.appendChild(kindBtn);
+
   const del = document.createElement('button');
   del.className = 'small-btn';
   del.textContent = '删除';
@@ -219,10 +233,12 @@ function groupCard(g, i) {
 /* ============ 选牌 ============ */
 
 let pickingKind = null;
+let editingIndex = null;
 
-function openPicker(kind) {
+function openPicker(kind, editIdx) {
   pickingKind = kind;
-  $('picker-title').textContent = '选牌 · ' + kindLabel(kind);
+  editingIndex = typeof editIdx === 'number' ? editIdx : null;
+  $('picker-title').textContent = (editingIndex === null ? '选牌 · ' : '改牌 · ') + kindLabel(kind);
   const body = $('picker-body');
   body.innerHTML = '';
 
@@ -267,7 +283,12 @@ function openPicker(kind) {
 }
 
 function pickTile(tile) {
-  state.groups.push({ kind: pickingKind, tile, jokers: 0 });
+  if (editingIndex !== null && state.groups[editingIndex]) {
+    state.groups[editingIndex].tile = tile;
+  } else {
+    state.groups.push({ kind: pickingKind, tile, jokers: 0 });
+  }
+  editingIndex = null;
   $('picker').hidden = true;
   render();
 }
