@@ -144,6 +144,44 @@ function findTileIn(line) {
 }
 
 /**
+ * 解析「按摆放顺序报牌名」的回答，得到 [{tile, count}]。
+ * 用来给结构里的组预填牌名。
+ */
+export function parseOrderedNames(raw) {
+  const out = [];
+  for (const rawLine of String(raw).split(/[\n；;]/)) {
+    const line = normalizeCn(rawLine.replace(/^[\s\-*•\d.、)）]+/, '')).trim();
+    if (!line || !/张/.test(line)) continue;
+    if (KIND_WORDS.some(([w]) => line.includes(w))) continue;
+    const tile = findTileIn(line);
+    if (!tile) continue;
+    const m = /(\d+)\s*张/.exec(line);
+    out.push({ tile, count: m ? Number(m[1]) : 3 });
+  }
+  return out;
+}
+
+/**
+ * 把有序牌名按张数对齐到结构组上。
+ * 两张表都按「从上到下、从左到右」排列，所以优先按张数匹配，兜底按顺序。
+ */
+export function mergeNames(groups, names) {
+  const used = new Set();
+  return groups.map((g) => {
+    if (g.kind === 'FLOWER') return { ...g, tile: null };
+    let idx = -1;
+    for (let i = 0; i < names.length; i++) {
+      if (!used.has(i) && names[i].count === g.count) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0) used.add(idx);
+    return { ...g, tile: idx >= 0 ? names[idx].tile : g.tile };
+  });
+}
+
+/**
  * 解析「只报结构」的回答：类型 + 张数，没有牌名。
  * 返回的组 tile 为 null，由用户在界面上点选补齐。
  */

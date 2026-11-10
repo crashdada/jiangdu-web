@@ -1,8 +1,8 @@
 'use strict';
 
 import { huZi, fan, multiplier, groupHuZi, tileFacts } from './engine.js';
-import { PROSE_PROMPT, ROT_PROMPT } from './prompts.js';
-import { parseProse } from './parse.js';
+import { PROSE_PROMPT, NAMES_PROMPT, ROT_PROMPT } from './prompts.js';
+import { parseProse, parseOrderedNames, mergeNames } from './parse.js';
 
 /* ============ 展示用文字 ============ */
 
@@ -150,7 +150,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.4.0 web';
+  $('ver').textContent = 'v0.5.0 web';
 }
 
 function groupCard(g, i) {
@@ -490,13 +490,27 @@ async function recognizeFile(file) {
   const upright = deg ? rotateCanvas(base, deg) : base;
   state.lastRot = deg;
 
-  const txt = await apiCall([
+  // 第一次：只问组型和张数（实测四手全对）
+  const structTxt = await apiCall([
     { type: 'text', text: PROSE_PROMPT },
     imageContent(jpeg(upright)),
-  ]);
-  const r = parseProse(txt);
+  ], 800);
+  const r = parseProse(structTxt);
 
-  state.groups = r.groups;
+  // 第二次：按顺序问每组牌名，用来预填（个别会错，用户点一下即可）
+  let merged = r.groups;
+  try {
+    const nameTxt = await apiCall([
+      { type: 'text', text: NAMES_PROMPT },
+      imageContent(jpeg(upright)),
+    ], 1200);
+    const names = parseOrderedNames(nameTxt);
+    if (names.length) merged = mergeNames(r.groups, names);
+  } catch (e) {
+    // 预填失败不影响主流程，牌名留空等用户点
+  }
+
+  state.groups = merged;
   state.flowers = r.flowers;
   render();
 
