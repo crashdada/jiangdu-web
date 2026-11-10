@@ -1,10 +1,12 @@
 /* 只缓存自家静态资源；API 请求一律不缓存 */
-const CACHE = 'jiangdu-v4';
+const CACHE = 'jiangdu-v5';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './engine.js',
+  './prompts.js',
+  './parse.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

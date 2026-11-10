@@ -1,6 +1,8 @@
 'use strict';
 
 import { huZi, fan, multiplier, groupHuZi, tileFacts } from './engine.js';
+import { PROSE_PROMPT, ROT_PROMPT } from './prompts.js';
+import { parseProse } from './parse.js';
 
 /* ============ 展示用文字 ============ */
 
@@ -145,7 +147,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.1.3 web';
+  $('ver').textContent = 'v0.2.0 web';
 }
 
 function groupCard(g, i) {
@@ -272,35 +274,6 @@ function pickTile(tile) {
 
 /* ============ 云端识别 ============ */
 
-const ROT_PROMPT = `这张图是麻将牌照片。牌面上的字（萬、東、發 等）现在是不是正立的？
-如果需要转动才能正立，需要**顺时针**转多少度？
-只回答一个数字：0、90、180 或 270。不要任何其他文字。`;
-
-const PROMPT = `你是麻将牌识别器。这是一手江都麻将的摆牌，牌面朝上分组摆好。
-
-只输出 JSON，不要任何解释、不要代码块围栏：
-{"groups":[{"kind":"暗刻","tiles":["四条","四条","四条"]}],"flowers":["冬"],"note":""}
-
-规则：
-- tiles：把这一组里的牌逐张列出来，百搭就写「百搭」。张数以你列出的张数为准。
-- kind 按摆法判断：
-  · 3 张排成一条直线 → 碰
-  · 3 张摆成品字（下面 2 张竖立并排，上面 1 张横躺）→ 暗刻
-  · 4 张一条直线 → 明杠
-  · 4 张里 3 张背面朝上、1 张正面 → 暗杠
-  · 2 张 → 对子
-- 暗杠特别容易漏：有 3 张背面（蓝色）并排、旁边 1 张正面时，一定要报成一组暗杠，
-  tiles 填 4 张，tile 用那张正面的牌名。漏掉一个暗杠会少算 32 胡。
-- 含百搭的组一定是暗刻：百搭只能凑 3 张的暗刻，不能用来碰。
-- tile 名用：一筒…九筒、一条…九条、一万…九万、东风、南风、西风、北风、红中、发财、白板
-- flowers 里放 春、夏、秋、冬，没有就空数组
-- 顺子和散牌不要输出（0 胡）
-
-注意：
-- 条是细长的竹节，筒是圆点，两者别混。
-- 同一组里的几张牌，方向可能并不一致 —— 有人会把其中一张摆成倒的或横的。
-  倒着的「北」还是北。请逐张单独判断方向，不要假设整组朝向一致。
-`;
 
 async function apiCall(content, maxTokens) {
   const s = state.settings;
@@ -485,19 +458,17 @@ async function recognizeFile(file) {
   const img = await loadImage(url);
   const base = canvasOf(img, 1600);
 
-  let deg = await detectRotation(base);
-  let upright = deg ? rotateCanvas(base, deg) : base;
-  if (deg && !(await isUpright(upright))) {
-    deg = (deg + 180) % 360;
-    upright = rotateCanvas(base, deg);
-  }
+  // 直接采用朝向判定的结果。之前加了一步「再确认一次、不对就补转 180°」，
+  // 实测那次确认并不可靠（大部分牌旋转 180° 看不出差别），反而会把对的转成错的。
+  const deg = await detectRotation(base);
+  const upright = deg ? rotateCanvas(base, deg) : base;
   state.lastRot = deg;
 
   const txt = await apiCall([
-    { type: 'text', text: PROMPT },
+    { type: 'text', text: PROSE_PROMPT },
     imageContent(jpeg(upright)),
   ]);
-  const r = parseResult(txt);
+  const r = parseProse(txt);
 
   state.groups = r.groups;
   state.flowers = r.flowers;
