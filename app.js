@@ -150,7 +150,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.1 web';
+  $('ver').textContent = 'v0.5.2 web';
 }
 
 function groupCard(g, i) {
@@ -626,6 +626,17 @@ $('s-key').value = state.settings.key || '';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // 有新版本就立刻接管，避免继续跑旧代码
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            reg.waiting && reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }

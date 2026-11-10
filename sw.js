@@ -1,5 +1,6 @@
-﻿/* 鍙紦瀛樿嚜瀹堕潤鎬佽祫婧愶紱API 璇锋眰涓€寰嬩笉缂撳瓨 */
-const CACHE = 'jiangdu-v13';
+/* 网络优先：联网时永远取最新文件，断网才回落到缓存。
+   之前用「缓存优先」，导致发了新版手机上还是旧的。 */
+const CACHE = 'jiangdu-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -14,26 +15,34 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(() => {}).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // 璺ㄥ煙锛圖eepSeek API锛変笉纰帮紝浜ょ粰娴忚鍣ㄧ洿杩?  if (url.origin !== location.origin) return;
+  if (url.origin !== location.origin || e.request.method !== 'GET') return;
+
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-      return res;
-    }))
+    fetch(e.request, { cache: 'no-store' })
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(e.request).then((hit) => hit || caches.match('./index.html')))
   );
 });
-
