@@ -88,6 +88,24 @@
 <input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="file-pick" accept="image/*" hidden>
 
+<script>
+// 出错时把原因显示在页面上：开发侧看不到渲染结果，只能靠这个把错误带出来
+(function () {
+  function show(msg, extra) {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#b00020;' +
+      'color:#fff;padding:10px 12px;font:12px/1.5 -apple-system,sans-serif;white-space:pre-wrap';
+    d.textContent = '页面出错：' + msg + (extra ? '\n' + extra : '');
+    document.body.appendChild(d);
+  }
+  window.addEventListener('error', function (e) {
+    show(e.message || String(e), (e.filename || '') + ':' + (e.lineno || ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    show((e.reason && (e.reason.message || e.reason)) || 'Promise 异常');
+  });
+})();
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

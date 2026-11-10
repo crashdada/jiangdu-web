@@ -147,7 +147,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.2.1 web';
+  $('ver').textContent = 'v0.2.2 web';
 }
 
 function groupCard(g, i) {
