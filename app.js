@@ -150,7 +150,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.0 web';
+  $('ver').textContent = 'v0.5.1 web';
 }
 
 function groupCard(g, i) {

@@ -167,7 +167,7 @@ export function parseOrderedNames(raw) {
  */
 export function mergeNames(groups, names) {
   const used = new Set();
-  return groups.map((g) => {
+  const byCount = groups.map((g) => {
     if (g.kind === 'FLOWER') return { ...g, tile: null };
     let idx = -1;
     for (let i = 0; i < names.length; i++) {
@@ -179,6 +179,24 @@ export function mergeNames(groups, names) {
     if (idx >= 0) used.add(idx);
     return { ...g, tile: idx >= 0 ? names[idx].tile : g.tile };
   });
+
+  // 张数对不上的时候（模型把 2 张说成 3 张之类），按张数匹配会大量失败，
+  // 这时退化成「按顺序硬配」——两张表都是从上到下、从左到右排的。
+  const matched = byCount.filter((g) => g.tile).length;
+  const total = groups.filter((g) => g.kind !== 'FLOWER').length;
+  if (matched >= total * 0.6) return byCount;
+
+  const out = [];
+  let p = 0;
+  for (const g of groups) {
+    if (g.kind === 'FLOWER' || p >= names.length) {
+      out.push({ ...g, tile: g.kind === 'FLOWER' ? null : g.tile });
+      continue;
+    }
+    out.push({ ...g, tile: names[p].tile });
+    p++;
+  }
+  return out;
 }
 
 /**
