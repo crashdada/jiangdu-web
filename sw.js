@@ -1,6 +1,6 @@
 /* 网络优先：联网时永远取最新文件，断网才回落到缓存。
    之前用「缓存优先」，导致发了新版手机上还是旧的。 */
-const CACHE = 'jiangdu-v14';
+const CACHE = 'jiangdu-v15';
 const ASSETS = [
   './',
   './index.html',

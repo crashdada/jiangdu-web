@@ -150,7 +150,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.2 web';
+  $('ver').textContent = 'v0.5.3 web';
 }
 
 function groupCard(g, i) {
@@ -590,6 +590,23 @@ function bind() {
     state.seat = null;
     state.roundWind = null;
     render();
+  };
+
+  // 万一又卡在旧缓存，点这个：注销 Service Worker、清缓存、重载
+  $('btn-update').onclick = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) {
+      // 忽略，直接重载
+    }
+    location.reload();
   };
 }
 
