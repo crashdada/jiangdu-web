@@ -1,7 +1,7 @@
 'use strict';
 
 import { huZi, fan, multiplier, groupHuZi, tileFacts } from './engine.js';
-import { PROSE_PROMPT, NAMES_PROMPT, ROT_PROMPT } from './prompts.js';
+import { PROSE_PROMPT, NAMES_PROMPT, ROT_PROMPT, FLOWER_PROMPT } from './prompts.js';
 import { parseProse, parseOrderedNames, mergeNames } from './parse.js';
 
 /* ============ 展示用文字 ============ */
@@ -166,7 +166,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.6 web';
+  $('ver').textContent = 'v0.5.7 web';
 }
 
 function groupCard(g, i) {
@@ -526,8 +526,28 @@ async function recognizeFile(file) {
     // 预填失败不影响主流程，牌名留空等用户点
   }
 
+  // 结构里有花，才去问是哪一张（直接问它，没花也会硬编一个出来）
+  let flowers = r.flowers;
+  if (flowers.includes('any')) {
+    try {
+      const ans = await apiCall([
+        { type: 'text', text: FLOWER_PROMPT },
+        imageContent(jpeg(upright)),
+      ], 60);
+      const hit = ['春', '夏', '秋', '冬'].find((f) => ans.includes(f));
+      if (hit) {
+        const code = { 春: 'chun', 夏: 'xia', 秋: 'qiu', 冬: 'dong' }[hit];
+        flowers = flowers.map((f) => (f === 'any' ? code : f));
+        if (!flowers.includes(code)) flowers.push(code);
+        flowers = [...new Set(flowers)];
+      }
+    } catch (e) {
+      // 认不出就保留「未指明」
+    }
+  }
+
   state.groups = merged;
-  state.flowers = r.flowers;
+  state.flowers = flowers;
   render();
 
   if (!r.groups.length) alert('模型没认出任何牌组。请确认牌是正面朝上、分组摆好的。');
