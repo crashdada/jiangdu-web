@@ -166,35 +166,36 @@ export function parseOrderedNames(raw) {
  * 两张表都按「从上到下、从左到右」排列，所以优先按张数匹配，兜底按顺序。
  */
 export function mergeNames(groups, names) {
-  const used = new Set();
-  const byCount = groups.map((g) => {
-    if (g.kind === 'FLOWER') return { ...g, tile: null };
-    let idx = -1;
-    for (let i = 0; i < names.length; i++) {
-      if (!used.has(i) && names[i].count === g.count) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx >= 0) used.add(idx);
-    return { ...g, tile: idx >= 0 ? names[idx].tile : g.tile };
-  });
-
-  // 张数对不上的时候（模型把 2 张说成 3 张之类），按张数匹配会大量失败，
-  // 这时退化成「按顺序硬配」——两张表都是从上到下、从左到右排的。
-  const matched = byCount.filter((g) => g.tile).length;
-  const total = groups.filter((g) => g.kind !== 'FLOWER').length;
-  if (matched >= total * 0.6) return byCount;
-
-  const out = [];
+  const used = new Array(names.length).fill(false);
+  const out = groups.map((g) => ({ ...g }));
   let p = 0;
-  for (const g of groups) {
-    if (g.kind === 'FLOWER' || p >= names.length) {
-      out.push({ ...g, tile: g.kind === 'FLOWER' ? null : g.tile });
+
+  for (const g of out) {
+    if (g.kind === 'FLOWER') {
+      g.tile = null;
       continue;
     }
-    out.push({ ...g, tile: names[p].tile });
-    p++;
+    if (g.tile) continue; // 结构解析时已经带了牌名
+
+    // 1) 优先找张数相同的下一个
+    let idx = -1;
+    for (let i = p; i < names.length; i++) {
+      if (!used[i] && names[i].count === g.count) { idx = i; break; }
+    }
+    // 2) 退一步在整个列表里找同张数的
+    if (idx < 0) {
+      for (let i = 0; i < names.length; i++) {
+        if (!used[i] && names[i].count === g.count) { idx = i; break; }
+      }
+    }
+    // 3) 还没有就按位置硬配 —— 暗杠只露一张脸时，模型会按「1张」报
+    if (idx < 0 && p < names.length && !used[p]) idx = p;
+
+    if (idx >= 0) {
+      used[idx] = true;
+      g.tile = names[idx].tile;
+      if (idx >= p) p = idx + 1;
+    }
   }
   return out;
 }
@@ -231,6 +232,10 @@ export function parseProse(raw) {
       if (hit.length === 1) {
         const c = flowerOf(hit[0]);
         if (c && !flowers.includes(c)) flowers.push(c);
+      } else {
+        // 模型常只写「花，1张」而不写是春夏秋冬。
+        // 花牌不论哪张都是 4 胡，用 'any' 占位即可（它不会匹配到「对应的花」那 1 番）。
+        flowers.push('any');
       }
       continue;
     }
