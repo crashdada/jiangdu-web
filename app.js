@@ -125,6 +125,22 @@ function render() {
     fl.appendChild(b);
   });
 
+  // 模型只说"花，几张"没说哪张时，用这个占位块显示出来（它已经计了 4 胡/张）
+  const anyCount = state.flowers.filter((f) => f === 'any').length;
+  if (anyCount > 0) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = `花 ${anyCount} 张（未指明）`;
+    b.setAttribute('aria-pressed', 'true');
+    b.title = '点一下可以移除';
+    b.onclick = () => {
+      const k = state.flowers.indexOf('any');
+      if (k >= 0) state.flowers.splice(k, 1);
+      render();
+    };
+    fl.appendChild(b);
+  }
+
   // 我是哪家
   const seatBox = $('seat-chips');
   seatBox.innerHTML = '';
@@ -150,7 +166,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.5 web';
+  $('ver').textContent = 'v0.5.6 web';
 }
 
 function groupCard(g, i) {
