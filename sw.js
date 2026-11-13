@@ -1,6 +1,8 @@
 /* 网络优先：联网时永远取最新文件，断网才回落到缓存。
    之前用「缓存优先」，导致发了新版手机上还是旧的。 */
-const CACHE = 'jiangdu-v19';
+const CACHE = 'jiangdu-v20';
+// 只预缓存应用本身的小文件。yolo 的 wasm(10.5MB) 和模型(10.6MB) 体积太大，
+// 改为首次用到时按需缓存（fetch 处理器会顺手存一份），避免安装时就拉 21MB。
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +10,8 @@ const ASSETS = [
   './engine.js',
   './prompts.js',
   './parse.js',
+  './group.js',
+  './yolo.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

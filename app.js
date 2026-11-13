@@ -3,6 +3,8 @@
 import { huZi, fan, multiplier, groupHuZi, tileFacts } from './engine.js';
 import { PROSE_PROMPT, NAMES_PROMPT, ROT_PROMPT, FLOWER_PROMPT } from './prompts.js';
 import { parseProse, parseOrderedNames, mergeNames } from './parse.js';
+import { detect as yoloDetect, warmup as yoloWarmup } from './yolo.js';
+import { groupDetections } from './group.js';
 
 /* ============ 展示用文字 ============ */
 
@@ -41,6 +43,7 @@ const state = {
   settings: loadSettings(),
   lastRot: null,
   busy: false,
+  engineUsed: null,
 };
 
 function loadSettings() {
@@ -50,6 +53,7 @@ function loadSettings() {
     base: raw.base || 'https://api.deepseek.com',
     model: raw.model || 'deepseek-flash',
     key: raw.key || '',
+    engine: raw.engine || 'yolo',   // yolo = 本地识别；cloud = 走大模型
   };
 }
 
@@ -166,7 +170,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.5.7 web';
+  $('ver').textContent = 'v0.6.0 web';
 }
 
 function groupCard(g, i) {
@@ -506,6 +510,27 @@ async function recognizeFile(file) {
   const upright = deg ? rotateCanvas(base, deg) : base;
   state.lastRot = deg;
 
+  // 本地 YOLO：一次给出「位置 + 牌名」，分组由几何完成，不需要联网
+  if (state.settings.engine !== 'cloud') {
+    try {
+      const dets = await yoloDetect(upright);
+      if (dets.length >= 2) {
+        state.groups = groupDetections(dets);
+        state.flowers = [];
+        state.engineUsed = 'yolo';
+        render();
+        return;
+      }
+      console.warn('YOLO 检出太少，回退云端', dets.length);
+    } catch (e) {
+      console.warn('YOLO 失败，回退云端：', e && e.message);
+    }
+  }
+
+  if (!state.settings.key) {
+    throw new Error('本地识别没跑通，且没有填 API Key，无法回退云端。');
+  }
+
   // 第一次：只问组型和张数（实测四手全对）
   const structTxt = await apiCall([
     { type: 'text', text: PROSE_PROMPT },
@@ -548,6 +573,7 @@ async function recognizeFile(file) {
 
   state.groups = merged;
   state.flowers = flowers;
+  state.engineUsed = 'cloud';
   render();
 
   if (!r.groups.length) alert('模型没认出任何牌组。请确认牌是正面朝上、分组摆好的。');
@@ -565,6 +591,17 @@ function bind() {
     $('s-key').value = state.settings.key;
     $('s-result').textContent = '';
     $('settings').hidden = false;
+
+    const markEngine = () => {
+      $('engine-yolo').setAttribute('aria-pressed', state.settings.engine === 'yolo' ? 'true' : 'false');
+      $('engine-cloud').setAttribute('aria-pressed', state.settings.engine === 'cloud' ? 'true' : 'false');
+      $('engine-hint').textContent = state.settings.engine === 'yolo'
+        ? '本地模式不需要 Key，首次使用要下载模型（约 21MB），之后离线可用。'
+        : '云端模式需要 Key；分组由大模型判断，牌名可能不准，可点选修正。';
+    };
+    markEngine();
+    $('engine-yolo').onclick = () => { state.settings.engine = 'yolo'; markEngine(); };
+    $('engine-cloud').onclick = () => { state.settings.engine = 'cloud'; markEngine(); };
   };
   $('settings-close').onclick = () => { $('settings').hidden = true; };
   $('s-save').onclick = () => {
@@ -572,6 +609,7 @@ function bind() {
       base: $('s-base').value.trim() || 'https://api.deepseek.com',
       model: $('s-model').value.trim() || 'deepseek-flash',
       key: $('s-key').value.trim(),
+      engine: state.settings.engine || 'yolo',
     };
     saveSettings();
     $('settings').hidden = true;
@@ -676,6 +714,16 @@ updateHint();
 $('s-base').value = state.settings.base || 'https://api.deepseek.com';
 $('s-model').value = state.settings.model || 'deepseek-flash';
 $('s-key').value = state.settings.key || '';
+
+// 本地引擎：页面打开就开始下模型，别等用户按拍照才发现要等 20 秒
+if (state.settings.engine === 'yolo') {
+  setTimeout(() => {
+    yoloWarmup().then((ok) => {
+      if (!ok) console.warn('YOLO 模型加载失败，识别时会回退云端');
+      else console.log('YOLO 模型就绪');
+    });
+  }, 1500);
+}
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
