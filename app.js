@@ -175,7 +175,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.7.0 web (切片高清识别版)';
+  $('ver').textContent = '0.7.1';
 }
 
 function groupCard(g, i) {
@@ -517,8 +517,8 @@ async function recognizeFile(file) {
 
   // 本地 YOLO：一次给出「位置 + 牌名」，分组由几何完成，不需要联网
   if (state.settings.engine !== 'cloud') {
+    $('rot-hint').textContent = '正在本地 YOLO 识别中（模型加载/推理中）…';
     try {
-      $('rot-hint').textContent = '正在本地 YOLO 识别中（模型加载/推理中）…';
       const dets = await yoloDetect(upright);
       if (dets.length >= 2) {
         const res = groupDetections(dets);
@@ -529,21 +529,23 @@ async function recognizeFile(file) {
         updateHint();
         return;
       }
-      console.warn('YOLO 检出太少，回退云端', dets.length);
-      state.yoloFailReason = '检出不足(' + dets.length + '张)';
+      throw new Error(`检出牌数过少（仅 ${dets.length} 张），未能成组。请确保牌面清晰无反光。`);
     } catch (e) {
-      console.warn('YOLO 失败，回退云端：', e && e.message);
-      state.yoloFailReason = e && e.message ? e.message : '加载异常';
+      state.engineUsed = null;
+      updateHint();
+      // 用户明确指定本地 YOLO 时，严禁自动静默回退到云端
+      const errMsg = (e && (e.stack || e.message)) || String(e);
+      alert('【本地 YOLO 识别异常】\n' + errMsg + '\n\n如需使用云端识别，请点击右上角设置切换为「云端大模型」。');
+      throw e;
     }
   }
 
   if (!state.settings.key) {
-    const errDetail = state.yoloFailReason ? ('\nYOLO 未能成功运行：' + state.yoloFailReason) : '';
-    throw new Error('本地 YOLO 识别未就绪或未检出有效牌面' + errDetail + '，且未填写云端 API Key 无法回退。');
+    throw new Error('未填写云端 API Key。请点击右上角齿轮设置填写 DeepSeek Key。');
   }
 
   $('rot-hint').textContent = '正在调用云端大模型识别中…';
-  state.engineUsed = '云端大模型' + (state.yoloFailReason ? ' (YOLO回退: ' + state.yoloFailReason + ')' : '');
+  state.engineUsed = '云端大模型';
 
   // 第一次：只问组型和张数（实测四手全对）
   const structTxt = await apiCall([
@@ -696,6 +698,14 @@ function bind() {
     }
     location.reload();
   };
+
+  const logModal = $('modal-changelog');
+  if (logModal) {
+    const btnLog = $('btn-changelog');
+    if (btnLog) btnLog.onclick = () => { logModal.hidden = false; };
+    const btnClose = $('changelog-close');
+    if (btnClose) btnClose.onclick = () => { logModal.hidden = true; };
+  }
 }
 
 function setBusy(v) {

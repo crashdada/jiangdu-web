@@ -52,9 +52,39 @@
   <div class="footer">
     <button class="link" id="btn-clear">清空重来</button>
     <button class="link" id="btn-update">强制更新</button>
-    <span class="ver" id="ver"></span>
+    <button class="link" id="btn-changelog">更新日志</button>
+    <span class="ver" id="ver">0.7.1</span>
   </div>
 </main>
+
+<!-- 更新日志 -->
+<div class="modal" id="modal-changelog" hidden>
+  <div class="sheet" style="max-height:80vh; overflow-y:auto;">
+    <div class="sheet-head">
+      <strong>版本更新日志</strong>
+      <button class="link" id="changelog-close">关闭</button>
+    </div>
+    <div style="font-size:13px; line-height:1.6; padding:8px 0; color:#333;">
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.1</h3>
+      <ul style="padding-left:18px; margin:0 0 12px;">
+        <li><strong>引擎选择解耦</strong>：严格遵循设置选择，本地 YOLO 失败直接报错，绝不静默跳转云端大模型。</li>
+        <li><strong>纯数字版本号</strong>：版本标识统一为纯数字格式。</li>
+        <li><strong>新增内置更新日志</strong>：可随时在手机端查看各版本更新细节。</li>
+      </ul>
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.0</h3>
+      <ul style="padding-left:18px; margin:0 0 12px;">
+        <li><strong>双排高清切片推理</strong>：解决宽幅手牌压缩失真，召回率跃升至 83.1%。</li>
+        <li><strong>双模图库微调</strong>：本土实拍+工业无损融合，纠正七筒、四条等混淆。</li>
+        <li><strong>识别引擎状态显式指示</strong>。</li>
+      </ul>
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.6.0</h3>
+      <ul style="padding-left:18px; margin:0 0 12px;">
+        <li>几何空间聚类自动分组（平排为碰、品字为暗刻）。</li>
+        <li>集成 WebAssembly ONNX 模型本地运行。</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 <!-- 选牌 -->
 <div class="modal" id="picker" hidden>
