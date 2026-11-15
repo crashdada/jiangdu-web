@@ -175,7 +175,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = '0.7.1';
+  $('ver').textContent = '0.7.2';
 }
 
 function groupCard(g, i) {

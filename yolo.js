@@ -37,10 +37,14 @@ let sessionPromise = null;
 
 async function getSession() {
   if (!sessionPromise) {
-    ort.env.wasm.wasmPaths = './ort/';
+    const base = document.baseURI || window.location.href;
+    ort.env.wasm.wasmPaths = {
+      mjs: new URL('./ort/ort-wasm-simd-threaded.mjs', base).href,
+      wasm: new URL('./ort/ort-wasm-simd-threaded.wasm', base).href,
+    };
     ort.env.wasm.numThreads = 1;   // 单线程：不要求跨域隔离(COOP/COEP)
     ort.env.wasm.simd = true;
-    sessionPromise = ort.InferenceSession.create(MODEL_URL, {
+    sessionPromise = ort.InferenceSession.create(new URL(MODEL_URL, base).href, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
     }).then((sess) => {

@@ -53,7 +53,7 @@
     <button class="link" id="btn-clear">清空重来</button>
     <button class="link" id="btn-update">强制更新</button>
     <button class="link" id="btn-changelog">更新日志</button>
-    <span class="ver" id="ver">0.7.1</span>
+    <span class="ver" id="ver">0.7.2</span>
   </div>
 </main>
 
@@ -65,6 +65,10 @@
       <button class="link" id="changelog-close">关闭</button>
     </div>
     <div style="font-size:13px; line-height:1.6; padding:8px 0; color:#333;">
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.2 (最新)</h3>
+      <ul style="padding-left:18px; margin:0 0 12px;">
+        <li><strong>修复 WebAssembly 404 模块加载错误</strong>：纠正了 onnxruntime 路径拼接导致多出一级 <code>/ort/ort/</code> 的路径解析 Bug。</li>
+      </ul>
       <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.1</h3>
       <ul style="padding-left:18px; margin:0 0 12px;">
         <li><strong>引擎选择解耦</strong>：严格遵循设置选择，本地 YOLO 失败直接报错，绝不静默跳转云端大模型。</li>
