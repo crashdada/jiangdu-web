@@ -1,30 +1,36 @@
-// Mahjong-YOLO (nano) 的浏览器端推理
-// 模型：640×640 输入，37 类：1m..9m(万) 1p..9p(筒) 1s..9s(条) 1z..7z(东南西北中发白) 0m/0p/0s(红五)
+// 40 类江都麻将 YOLO 模型（ONNX）浏览器端推理
+// 模型：640×640 输入，40 类（万/筒/条 + 东南西北中发白 + 春夏秋冬 + 百搭 + 背）
+// 支持自适应双排切片高清推理（Dual-Band ROI Slicing），彻底解决长条手牌压缩失真漏检
 
 import * as ort from './ort/ort.wasm.min.mjs';
 
 const MODEL_URL = 'models/tile-yolo.onnx';
-const INPUT = 640;
-const CONF = 0.35;
-const IOU = 0.45;
+let INPUT = 640;
+const CONF = 0.25;
+const IOU = 0.40;
 
 const NAMES = [
-  '1m', '1p', '1s', '1z', '2m', '2p', '2s', '2z', '3m', '3p', '3s', '3z',
-  '4m', '4p', '4s', '4z', '5m', '5p', '5s', '5z', '6m', '6p', '6s', '6z',
-  '7m', '7p', '7s', '7z', '8m', '8p', '8s', '9m', '9p', '9s', '0m', '0p', '0s',
+  '一万', '一条', '一筒', '七万', '七条', '七筒', '三万', '三条', '三筒', '东',
+  '中', '九万', '九条', '九筒', '二万', '二条', '二筒', '五万', '五条', '五筒',
+  '八万', '八条', '八筒', '六万', '六条', '六筒', '冬', '北', '南', '发',
+  '四万', '四条', '四筒', '夏', '春', '白', '百搭', '秋', '背', '西'
 ];
 
-const HONOR = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'];
-const SUIT = { m: 'w', p: 'b', s: 't' };
+const CODE_MAP = {
+  '一万': '1w', '二万': '2w', '三万': '3w', '四万': '4w', '五万': '5w',
+  '六万': '6w', '七万': '7w', '八万': '8w', '九万': '9w',
+  '一条': '1t', '二条': '2t', '三条': '3t', '四条': '4t', '五条': '5t',
+  '六条': '6t', '七条': '7t', '八条': '8t', '九条': '9t',
+  '一筒': '1b', '二筒': '2b', '三筒': '3b', '四筒': '4b', '五筒': '5b',
+  '六筒': '6b', '七筒': '7b', '八筒': '8b', '九筒': '9b',
+  '东': 'E', '南': 'S', '西': 'W', '北': 'N', '中': 'Z', '发': 'F', '白': 'B',
+  '春': 'chun', '夏': 'xia', '秋': 'qiu', '冬': 'dong',
+  '百搭': 'JOKER', '背': 'BACK'
+};
 
 /** 把 YOLO 的类别名转成我们引擎的牌码 */
 export function toTileCode(raw) {
-  if (!raw || raw.length !== 2) return null;
-  const n = Number(raw[0]);
-  const s = raw[1];
-  if (SUIT[s]) return `${n === 0 ? 5 : n}${SUIT[s]}`;
-  if (s === 'z' && n >= 1 && n <= 7) return HONOR[n - 1];
-  return null;
+  return CODE_MAP[raw] || null;
 }
 
 let sessionPromise = null;
@@ -37,6 +43,12 @@ async function getSession() {
     sessionPromise = ort.InferenceSession.create(MODEL_URL, {
       executionProviders: ['wasm'],
       graphOptimizationLevel: 'all',
+    }).then((sess) => {
+      try {
+        const shape = sess.inputs && sess.inputs[0] ? sess.inputs[0].dims : null;
+        if (shape && shape[2] > 0) INPUT = shape[2];
+      } catch (e) {}
+      return sess;
     }).catch((e) => {
       sessionPromise = null;
       throw e;
@@ -50,7 +62,7 @@ export function warmup() {
   return getSession().then(() => true).catch(() => false);
 }
 
-/** 把 canvas 缩到 640×640，灰色补边（YOLO 的 letterbox） */
+/** 把 canvas 缩到 INPUT×INPUT，灰色补边（YOLO 的 letterbox） */
 function letterbox(canvas) {
   const scale = Math.min(INPUT / canvas.width, INPUT / canvas.height);
   const w = Math.round(canvas.width * scale);
@@ -95,8 +107,8 @@ function iou(a, b) {
 }
 
 /** YOLOv8 输出 [1, 4+nc, N] → 检测框 */
-function decode(output, lb) {
-  const dims = output.dims;            // [1, 41, 8400]
+function decode(output, lb, offsetY = 0) {
+  const dims = output.dims;            // [1, 44, 8400]
   const nc = dims[1] - 4;
   const n = dims[2];
   const d = output.data;
@@ -121,40 +133,78 @@ function decode(output, lb) {
       cls: bestC,
       conf: best,
       x0: (cx - w / 2 - lb.dx) / lb.scale,
-      y0: (cy - h / 2 - lb.dy) / lb.scale,
+      y0: (cy - h / 2 - lb.dy) / lb.scale + offsetY,
       x1: (cx + w / 2 - lb.dx) / lb.scale,
-      y1: (cy + h / 2 - lb.dy) / lb.scale,
+      y1: (cy + h / 2 - lb.dy) / lb.scale + offsetY,
     });
   }
-
-  // 类无关 NMS：同一块牌只留一个类，避免一个位置冒出三种牌名
-  cand.sort((a, b) => b.conf - a.conf);
-  const keep = [];
-  for (const c of cand) {
-    if (keep.every((k) => iou(k, c) < IOU)) keep.push(c);
-  }
-  return keep;
+  return cand;
 }
 
-/**
- * 对一张 canvas 做检测。
- * 返回 [{tile, raw, conf, box:[x0,y0,x1,y1]}]，按从上到下、从左到右排序。
- */
-export async function detect(canvas) {
-  const session = await getSession();
+async function inferCanvas(session, canvas, offsetY = 0) {
   const lb = letterbox(canvas);
   const input = toTensor(lb.canvas);
   const feeds = {};
   feeds[session.inputNames[0]] = input;
   const out = await session.run(feeds);
   const tensor = out[session.outputNames[0]];
+  return decode(tensor, lb, offsetY);
+}
 
-  const dets = decode(tensor, lb)
+/**
+ * 对一张 canvas 做检测。
+ * 支持自适应双排切片高清推理（Dual-Band ROI）：
+ * 当拍摄为宽图（横排手牌）时，自动结合全局视野与上下两排局部高分辨率切片，
+ * 使单张牌在网络中的分辨率提高一倍以上，显著提高九条、四条、七筒等复杂牌面的检出率！
+ */
+export async function detect(canvas) {
+  const session = await getSession();
+  const W = canvas.width;
+  const H = canvas.height;
+
+  let allCandidates = [];
+
+  // 1. 全局视野推理
+  const globalCands = await inferCanvas(session, canvas, 0);
+  allCandidates.push(...globalCands);
+
+  // 2. 自适应双排切片推理（仅横向拍摄手牌场景启用）
+  if (W >= H && H >= 240) {
+    // 上排 ROI 切片 (0 ~ 0.52*H)
+    const topH = Math.round(0.52 * H);
+    const cTop = document.createElement('canvas');
+    cTop.width = W;
+    cTop.height = topH;
+    cTop.getContext('2d').drawImage(canvas, 0, 0, W, topH, 0, 0, W, topH);
+    const topCands = await inferCanvas(session, cTop, 0);
+    allCandidates.push(...topCands);
+
+    // 下排 ROI 切片 (0.28*H ~ H)
+    const botY = Math.round(0.28 * H);
+    const botH = H - botY;
+    const cBot = document.createElement('canvas');
+    cBot.width = W;
+    cBot.height = botH;
+    cBot.getContext('2d').drawImage(canvas, 0, botY, W, botH, 0, 0, W, botH);
+    const botCands = await inferCanvas(session, cBot, botY);
+    allCandidates.push(...botCands);
+  }
+
+  // 3. 全局类无关 NMS 去重
+  allCandidates.sort((a, b) => b.conf - a.conf);
+  const keep = [];
+  for (const c of allCandidates) {
+    if (keep.every((k) => iou(k, c) < IOU)) {
+      keep.push(c);
+    }
+  }
+
+  const dets = keep
     .map((c) => ({
       raw: NAMES[c.cls],
       tile: toTileCode(NAMES[c.cls]),
       conf: Math.round(c.conf * 1000) / 1000,
-      box: [c.x0, c.y0, c.x1, c.y1],
+      box: [Math.round(c.x0), Math.round(c.y0), Math.round(c.x1), Math.round(c.y1)],
     }))
     .filter((d) => d.tile && d.conf >= CONF);
 

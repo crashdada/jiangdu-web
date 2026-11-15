@@ -13,10 +13,15 @@ const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const HONOR_CN = ['东', '南', '西', '北', '中', '发', '白'];
 
 function tileLabel(code) {
-  const f = tileFacts(code);
-  if (f.isHonor) return HONOR_CN[f.rank - 1];
-  const suitCn = { w: '万', t: '条', b: '筒' }[f.suit];
-  return CN[f.rank - 1] + suitCn;
+  if (!code) return '未知';
+  try {
+    const f = tileFacts(code);
+    if (f.isHonor) return HONOR_CN[f.rank - 1];
+    const suitCn = { w: '万', t: '条', b: '筒' }[f.suit];
+    return CN[f.rank - 1] + suitCn;
+  } catch (e) {
+    return code;
+  }
 }
 
 function kindLabel(k) {
@@ -170,7 +175,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = 'v0.6.0 web';
+  $('ver').textContent = 'v0.7.0 web (切片高清识别版)';
 }
 
 function groupCard(g, i) {
@@ -515,8 +520,9 @@ async function recognizeFile(file) {
     try {
       const dets = await yoloDetect(upright);
       if (dets.length >= 2) {
-        state.groups = groupDetections(dets);
-        state.flowers = [];
+        const res = groupDetections(dets);
+        state.groups = Array.isArray(res) ? res : (res.groups || []);
+        state.flowers = res.flowers || [];
         state.engineUsed = 'yolo';
         render();
         return;
