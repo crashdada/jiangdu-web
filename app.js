@@ -518,24 +518,32 @@ async function recognizeFile(file) {
   // 本地 YOLO：一次给出「位置 + 牌名」，分组由几何完成，不需要联网
   if (state.settings.engine !== 'cloud') {
     try {
+      $('rot-hint').textContent = '正在本地 YOLO 识别中（模型加载/推理中）…';
       const dets = await yoloDetect(upright);
       if (dets.length >= 2) {
         const res = groupDetections(dets);
         state.groups = Array.isArray(res) ? res : (res.groups || []);
         state.flowers = res.flowers || [];
-        state.engineUsed = 'yolo';
+        state.engineUsed = '本地 YOLO';
         render();
+        updateHint();
         return;
       }
       console.warn('YOLO 检出太少，回退云端', dets.length);
+      state.yoloFailReason = '检出不足(' + dets.length + '张)';
     } catch (e) {
       console.warn('YOLO 失败，回退云端：', e && e.message);
+      state.yoloFailReason = e && e.message ? e.message : '加载异常';
     }
   }
 
   if (!state.settings.key) {
-    throw new Error('本地识别没跑通，且没有填 API Key，无法回退云端。');
+    const errDetail = state.yoloFailReason ? ('\nYOLO 未能成功运行：' + state.yoloFailReason) : '';
+    throw new Error('本地 YOLO 识别未就绪或未检出有效牌面' + errDetail + '，且未填写云端 API Key 无法回退。');
   }
+
+  $('rot-hint').textContent = '正在调用云端大模型识别中…';
+  state.engineUsed = '云端大模型' + (state.yoloFailReason ? ' (YOLO回退: ' + state.yoloFailReason + ')' : '');
 
   // 第一次：只问组型和张数（实测四手全对）
   const structTxt = await apiCall([
@@ -704,12 +712,14 @@ function setBusy(v) {
 
 function updateHint() {
   const el = $('rot-hint');
-  if (state.lastRot == null) {
+  if (state.lastRot == null && !state.engineUsed) {
     el.hidden = true;
     return;
   }
   el.hidden = false;
-  el.textContent = '上次识别：图片转正 ' + state.lastRot + '°';
+  const rotText = state.lastRot != null ? ('图片转正 ' + state.lastRot + '°') : '';
+  const engText = state.engineUsed ? (' · ' + state.engineUsed) : '';
+  el.textContent = '上次识别：' + rotText + engText;
 }
 
 bind();
