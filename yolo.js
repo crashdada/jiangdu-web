@@ -110,6 +110,16 @@ function iou(a, b) {
   return ua > 0 ? inter / ua : 0;
 }
 
+function ios(a, b) {
+  const x0 = Math.max(a.x0, b.x0);
+  const y0 = Math.max(a.y0, b.y0);
+  const x1 = Math.min(a.x1, b.x1);
+  const y1 = Math.min(a.y1, b.y1);
+  const inter = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+  const smaller = Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0));
+  return smaller > 0 ? inter / smaller : 0;
+}
+
 /** YOLOv8 输出 [1, 4+nc, N] → 检测框 */
 function decode(output, lb, offsetY = 0) {
   const dims = output.dims;            // [1, 44, 8400]
@@ -194,11 +204,38 @@ export async function detect(canvas) {
     allCandidates.push(...botCands);
   }
 
-  // 3. 全局类无关 NMS 去重
+  // 3. 增强 NMS 去重与物理尺寸过滤
   allCandidates.sort((a, b) => b.conf - a.conf);
   const keep = [];
   for (const c of allCandidates) {
-    if (keep.every((k) => iou(k, c) < IOU)) {
+    const w = c.x1 - c.x0;
+    const h = c.y1 - c.y0;
+    // 物理尺寸与长宽比过滤：剔除边缘小碎片、细条及巨大阴影
+    if (w < 70 || h < 90 || w > 320 || h > 320) continue;
+    const aspect = w / h;
+    if (aspect < 0.40 || aspect > 2.3) continue;
+
+    // 剔除最右/最左边缘的怪异牌背（桌布边缘反光）
+    const rawName = NAMES[c.cls];
+    if (c.x1 > W - 20 && rawName === '背' && w > 180) continue;
+
+    const cx = (c.x0 + c.x1) / 2;
+    const cy = (c.y0 + c.y1) / 2;
+
+    let suppress = false;
+    for (const k of keep) {
+      if (iou(k, c) > 0.38 || ios(k, c) > 0.58) {
+        suppress = true;
+        break;
+      }
+      const kcx = (k.x0 + k.x1) / 2;
+      const kcy = (k.y0 + k.y1) / 2;
+      if (Math.abs(cx - kcx) < 45 && Math.abs(cy - kcy) < 55) {
+        suppress = true;
+        break;
+      }
+    }
+    if (!suppress) {
       keep.push(c);
     }
   }
