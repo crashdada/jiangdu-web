@@ -53,7 +53,7 @@
     <button class="link" id="btn-clear">清空重来</button>
     <button class="link" id="btn-update">强制更新</button>
     <button class="link" id="btn-changelog">更新日志</button>
-    <span class="ver" id="ver">0.7.3</span>
+    <span class="ver" id="ver">0.7.4</span>
   </div>
 </main>
 
@@ -65,7 +65,15 @@
       <button class="link" id="changelog-close">关闭</button>
     </div>
     <div style="font-size:13px; line-height:1.6; padding:8px 0; color:#333;">
-      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.3 (最新)</h3>
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.4 (最新)</h3>
+      <ul style="padding-left:18px; margin:0 0 12px;">
+        <li><strong>横向重叠高清切片推理</strong>：将宽幅手牌由 Y 轴切片改为 X 轴左右重叠切片（0~58%、42~100%），单牌输入分辨率提升 1.72×（像素面积约 3×），同时剔除切缝截断半牌。</li>
+        <li><strong>物理颜色特征精校</strong>：引入六条（全绿）与九条（中列红条）颜色区分及纯绿牌背校验，消除高难易混牌误判。</li>
+        <li><strong>上排同牌切分 + 下排 2D 空间聚类</strong>：修复紧凑无间隙副露跨组强凑明杠问题，改为下排物理连通聚类 + 竖牌加权投票，准确还原品字暗刻与百搭归属。</li>
+        <li><strong>端侧模型训练层升级</strong>：合成数据补充 90°/180° 多朝向、倒品字暗刻、麻将机拼缝与纯绿桌布负样本并收紧 HSV 抖动，纯 YOLO 原始逐牌命中率由 84.5% 提升至 97.2%（180° 倒置手牌由 54.9% 跃升至 95.8%），桌布假牌背误检归零。</li>
+        <li><strong>尺度自适应与真离线优化</strong>：所有几何阈值按中位牌尺寸自适应缩放；本地 YOLO 模式跳过云端朝向请求，4 个标准实测手牌端到端命中率达 4/4（100%）。</li>
+      </ul>
+      <h3 style="margin:8px 0 4px; color:#1a1a1a;">0.7.3</h3>
       <ul style="padding-left:18px; margin:0 0 12px;">
         <li><strong>手牌几何分组重构</strong>：支持上排副露区与下排手牌区分层空间聚类。</li>
         <li><strong>彻底清除虚假暗杠</strong>：暗杠要求至少 3 张紧凑相邻的牌背簇，消除散落桌布反光造成的误建暗杠。</li>

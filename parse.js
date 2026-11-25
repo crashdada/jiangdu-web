@@ -1,6 +1,8 @@
 // 把模型返回的文字解析成 { groups, flowers }
 // App 和测试脚本共用，保证「识别→算分」这段逻辑只有一份
 
+import { flowerCodeOf } from './tiles.js';
+
 const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
 export function kindOf(s) {
@@ -41,7 +43,7 @@ export function tileOf(s) {
 }
 
 export function flowerOf(s) {
-  return { 春: 'chun', 夏: 'xia', 秋: 'qiu', 冬: 'dong' }[(s || '').trim()] || null;
+  return flowerCodeOf(s);
 }
 
 const isJoker = (s) => ['百搭', '百搭牌'].includes((s || '').trim());

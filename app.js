@@ -5,37 +5,15 @@ import { PROSE_PROMPT, NAMES_PROMPT, ROT_PROMPT, FLOWER_PROMPT } from './prompts
 import { parseProse, parseOrderedNames, mergeNames } from './parse.js';
 import { detect as yoloDetect, warmup as yoloWarmup } from './yolo.js';
 import { groupDetections } from './group.js';
+import { HONOR_CODES as HONORS, FLOWERS, CN_DIGITS as CN, tileLabel, flowerCodeOf } from './tiles.js';
 
 /* ============ 展示用文字 ============ */
-
-const HONORS = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'];
-const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
-const HONOR_CN = ['东', '南', '西', '北', '中', '发', '白'];
-
-function tileLabel(code) {
-  if (!code) return '未知';
-  try {
-    const f = tileFacts(code);
-    if (f.isHonor) return HONOR_CN[f.rank - 1];
-    const suitCn = { w: '万', t: '条', b: '筒' }[f.suit];
-    return CN[f.rank - 1] + suitCn;
-  } catch (e) {
-    return code;
-  }
-}
 
 function kindLabel(k) {
   return { PAIR: '对子', MING_KE: '碰', AN_KE: '暗刻', MING_GANG: '明杠', AN_GANG: '暗杠' }[k];
 }
 
 /* ============ 状态 ============ */
-
-const FLOWERS = [
-  { code: 'chun', label: '春' },
-  { code: 'xia', label: '夏' },
-  { code: 'qiu', label: '秋' },
-  { code: 'dong', label: '冬' },
-];
 
 const SEATS = ['庄 东/春', '下家 南/夏', '对家 西/秋', '末家 北/冬'];
 const WINDS = ['东', '南', '西', '北'];
@@ -175,7 +153,7 @@ function render() {
     windBox.appendChild(b);
   });
 
-  $('ver').textContent = '0.7.3';
+  $('ver').textContent = '0.7.4';
 }
 
 function groupCard(g, i) {
@@ -467,7 +445,7 @@ function tileOf(s) {
 }
 
 function flowerOf(s) {
-  return { 春: 'chun', 夏: 'xia', 秋: 'qiu', 冬: 'dong' }[(s || '').trim()] || null;
+  return flowerCodeOf(s);
 }
 
 function parseResult(raw) {
@@ -509,9 +487,10 @@ async function recognizeFile(file) {
   const img = await loadImage(url);
   const base = canvasOf(img, 1600);
 
-  // 直接采用朝向判定的结果。之前加了一步「再确认一次、不对就补转 180°」，
-  // 实测那次确认并不可靠（大部分牌旋转 180° 看不出差别），反而会把对的转成错的。
-  const deg = await detectRotation(base);
+  // 仅云端模式调用大模型朝向判定；本地 YOLO 模式完全离线，不发起无效网络请求
+  const deg = (state.settings.engine === 'cloud' && state.settings.key)
+    ? await detectRotation(base)
+    : 0;
   const upright = deg ? rotateCanvas(base, deg) : base;
   state.lastRot = deg;
 
@@ -577,7 +556,7 @@ async function recognizeFile(file) {
       ], 60);
       const hit = ['春', '夏', '秋', '冬'].find((f) => ans.includes(f));
       if (hit) {
-        const code = { 春: 'chun', 夏: 'xia', 秋: 'qiu', 冬: 'dong' }[hit];
+        const code = flowerCodeOf(hit);
         flowers = flowers.map((f) => (f === 'any' ? code : f));
         if (!flowers.includes(code)) flowers.push(code);
         flowers = [...new Set(flowers)];
@@ -657,8 +636,8 @@ function bind() {
     const f = ev.target.files && ev.target.files[0];
     ev.target.value = '';
     if (!f) return;
-    if (!state.settings.key) {
-      alert('还没填 API Key，点右上角「设置」');
+    if (state.settings.engine === 'cloud' && !state.settings.key) {
+      alert('云端识别需要 API Key，请点右上角「设置」填写，或切换为本地识别');
       return;
     }
     setBusy(true);
@@ -682,7 +661,7 @@ function bind() {
     render();
   };
 
-  // 万一又卡在旧缓存，点这个：注销 Service Worker、清缓存、重载
+  // 万一又卡在旧缓存，点这个：注销 Service Worker、清缓存、带时间戳防缓存重载
   $('btn-update').onclick = async () => {
     try {
       if ('serviceWorker' in navigator) {
@@ -696,7 +675,9 @@ function bind() {
     } catch (e) {
       // 忽略，直接重载
     }
-    location.reload();
+    const u = new URL(location.href);
+    u.searchParams.set('_u', String(Date.now()));
+    location.replace(u.href);
   };
 
   const logModal = $('modal-changelog');

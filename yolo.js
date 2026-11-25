@@ -3,34 +3,16 @@
 // 支持自适应双排切片高清推理（Dual-Band ROI Slicing），彻底解决长条手牌压缩失真漏检
 
 import * as ort from './ort/ort.wasm.min.mjs';
+import { YOLO_CLASS_CODES } from './tiles.js';
 
 const MODEL_URL = 'models/tile-yolo.onnx';
 let INPUT = 640;
 const CONF = 0.25;
 const IOU = 0.40;
 
-const NAMES = [
-  '一万', '一条', '一筒', '七万', '七条', '七筒', '三万', '三条', '三筒', '东',
-  '中', '九万', '九条', '九筒', '二万', '二条', '二筒', '五万', '五条', '五筒',
-  '八万', '八条', '八筒', '六万', '六条', '六筒', '冬', '北', '南', '发',
-  '四万', '四条', '四筒', '夏', '春', '白', '百搭', '秋', '背', '西'
-];
-
-const CODE_MAP = {
-  '一万': '1w', '二万': '2w', '三万': '3w', '四万': '4w', '五万': '5w',
-  '六万': '6w', '七万': '7w', '八万': '8w', '九万': '9w',
-  '一条': '1t', '二条': '2t', '三条': '3t', '四条': '4t', '五条': '5t',
-  '六条': '6t', '七条': '7t', '八条': '8t', '九条': '9t',
-  '一筒': '1b', '二筒': '2b', '三筒': '3b', '四筒': '4b', '五筒': '5b',
-  '六筒': '6b', '七筒': '7b', '八筒': '8b', '九筒': '9b',
-  '东': 'E', '南': 'S', '西': 'W', '北': 'N', '中': 'Z', '发': 'F', '白': 'B',
-  '春': 'chun', '夏': 'xia', '秋': 'qiu', '冬': 'dong',
-  '百搭': 'JOKER', '背': 'BACK'
-};
-
-/** 把 YOLO 的类别名转成我们引擎的牌码 */
-export function toTileCode(raw) {
-  return CODE_MAP[raw] || null;
+/** 兼容导出：直接返回合法统一牌码 */
+export function toTileCode(code) {
+  return YOLO_CLASS_CODES.includes(code) ? code : null;
 }
 
 let sessionPromise = null;
@@ -121,7 +103,7 @@ function ios(a, b) {
 }
 
 /** YOLOv8 输出 [1, 4+nc, N] → 检测框 */
-function decode(output, lb, offsetY = 0) {
+function decode(output, lb, offsetX = 0, offsetY = 0) {
   const dims = output.dims;            // [1, 44, 8400]
   const nc = dims[1] - 4;
   const n = dims[2];
@@ -146,30 +128,112 @@ function decode(output, lb, offsetY = 0) {
     cand.push({
       cls: bestC,
       conf: best,
-      x0: (cx - w / 2 - lb.dx) / lb.scale,
+      rankConf: best,
+      x0: (cx - w / 2 - lb.dx) / lb.scale + offsetX,
       y0: (cy - h / 2 - lb.dy) / lb.scale + offsetY,
-      x1: (cx + w / 2 - lb.dx) / lb.scale,
+      x1: (cx + w / 2 - lb.dx) / lb.scale + offsetX,
       y1: (cy + h / 2 - lb.dy) / lb.scale + offsetY,
     });
   }
   return cand;
 }
 
-async function inferCanvas(session, canvas, offsetY = 0) {
+async function inferCanvas(session, canvas, offsetX = 0, offsetY = 0) {
   const lb = letterbox(canvas);
   const input = toTensor(lb.canvas);
   const feeds = {};
   feeds[session.inputNames[0]] = input;
   const out = await session.run(feeds);
   const tensor = out[session.outputNames[0]];
-  return decode(tensor, lb, offsetY);
+  return decode(tensor, lb, offsetX, offsetY);
+}
+
+/**
+ * 基于牌面物理颜色特征精校易混牌：
+ * 1. 六条(全绿) vs 九条(中列红条)：九条中间列含红条，六条无红条；
+ * 2. 绿色牌背 vs 白色牌面：整块高占比纯绿像素的框物理上必为牌背（防止高分辨率切片把纯绿牌背误判为百搭）。
+ * 仅对极少数候选框读取小图块，耗时 <0.3ms。
+ */
+function refineByColorFeatures(canvas, dets) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const W = canvas.width;
+  const H = canvas.height;
+  for (const d of dets) {
+    const needBamboo = d.tile === '6t' || d.tile === '9t';
+    const needBackCheck = d.tile === 'JOKER';
+    if (!needBamboo && !needBackCheck) continue;
+
+    const x0 = Math.max(0, Math.round(d.box[0]));
+    const y0 = Math.max(0, Math.round(d.box[1]));
+    const x1 = Math.min(W, Math.round(d.box[2]));
+    const y1 = Math.min(H, Math.round(d.box[3]));
+    const bw = x1 - x0;
+    const bh = y1 - y0;
+    if (bw < 20 || bh < 20) continue;
+
+    // 内缩 12% 避开倒角阴影
+    const inX0 = x0 + Math.round(bw * 0.12);
+    const inY0 = y0 + Math.round(bh * 0.12);
+    const inW = Math.max(1, Math.round(bw * 0.76));
+    const inH = Math.max(1, Math.round(bh * 0.76));
+
+    if (needBackCheck) {
+      const { data } = ctx.getImageData(inX0, inY0, inW, inH);
+      const total = inW * inH;
+      let greenCnt = 0;
+      for (let i = 0; i < total; i++) {
+        const r = data[i * 4];
+        const g = data[i * 4 + 1];
+        const b = data[i * 4 + 2];
+        if (g > 60 && (g - r) > 15 && (g - b) > 15) greenCnt++;
+      }
+      if (greenCnt / total > 0.55) {
+        d.tile = 'BACK';
+        d.raw = 'BACK';
+      }
+      continue;
+    }
+
+    // 六条 vs 九条：取中心主列（若横放则取中心主行）
+    let rx0, ry0, rw, rh;
+    if (bw > bh * 1.15) {
+      rx0 = inX0;
+      ry0 = inY0 + Math.round(inH * 0.32);
+      rw = inW;
+      rh = Math.max(1, Math.round(inH * 0.36));
+    } else {
+      rx0 = inX0 + Math.round(inW * 0.32);
+      ry0 = inY0;
+      rw = Math.max(1, Math.round(inW * 0.36));
+      rh = inH;
+    }
+
+    const { data } = ctx.getImageData(rx0, ry0, rw, rh);
+    const total = rw * rh;
+    let redCnt = 0;
+    for (let i = 0; i < total; i++) {
+      const r = data[i * 4];
+      const g = data[i * 4 + 1];
+      const b = data[i * 4 + 2];
+      if (r > 70 && (r - g) > 25 && (r - b) > 25) redCnt++;
+    }
+    const midRedRatio = redCnt / total;
+    if (d.tile === '6t' && midRedRatio > 0.10) {
+      d.tile = '9t';
+      d.raw = '9t';
+    } else if (d.tile === '9t' && midRedRatio < 0.03) {
+      d.tile = '6t';
+      d.raw = '6t';
+    }
+  }
 }
 
 /**
  * 对一张 canvas 做检测。
- * 支持自适应双排切片高清推理（Dual-Band ROI）：
- * 当拍摄为宽图（横排手牌）时，自动结合全局视野与上下两排局部高分辨率切片，
- * 使单张牌在网络中的分辨率提高一倍以上，显著提高九条、四条、七筒等复杂牌面的检出率！
+ * 自适应横向高清切片推理（Horizontal Overlapping ROI Slicing）：
+ * 宽幅横排手牌按 X 轴切分为左右重叠切片（0~58%W, 42%~100%W），
+ * 使单张牌输入网络的线性分辨率提升 1.72×（像素面积约 3×），
+ * 并结合全局视野兜底与物理颜色精校，显著提高检出率与易混牌准确率。
  */
 export async function detect(canvas) {
   const session = await getSession();
@@ -178,46 +242,61 @@ export async function detect(canvas) {
 
   let allCandidates = [];
 
-  // 1. 全局视野推理
-  const globalCands = await inferCanvas(session, canvas, 0);
+  // 1. 全局视野推理（兜底跨接缝牌）
+  const globalCands = await inferCanvas(session, canvas, 0, 0);
   allCandidates.push(...globalCands);
 
-  // 2. 自适应双排切片推理（仅横向拍摄手牌场景启用）
+  // 2. 自适应横向重叠高清切片推理（仅宽图启用）
   if (W >= H && H >= 240) {
-    // 上排 ROI 切片 (0 ~ 0.52*H)
-    const topH = Math.round(0.52 * H);
-    const cTop = document.createElement('canvas');
-    cTop.width = W;
-    cTop.height = topH;
-    cTop.getContext('2d').drawImage(canvas, 0, 0, W, topH, 0, 0, W, topH);
-    const topCands = await inferCanvas(session, cTop, 0);
-    allCandidates.push(...topCands);
+    const seamMargin = Math.max(10, Math.round(W * 0.008));
 
-    // 下排 ROI 切片 (0.28*H ~ H)
-    const botY = Math.round(0.28 * H);
-    const botH = H - botY;
-    const cBot = document.createElement('canvas');
-    cBot.width = W;
-    cBot.height = botH;
-    cBot.getContext('2d').drawImage(canvas, 0, botY, W, botH, 0, 0, W, botH);
-    const botCands = await inferCanvas(session, cBot, botY);
-    allCandidates.push(...botCands);
+    // 左半高清切片 (0 ~ 0.58*W)
+    const leftW = Math.round(0.58 * W);
+    const cLeft = document.createElement('canvas');
+    cLeft.width = leftW;
+    cLeft.height = H;
+    cLeft.getContext('2d').drawImage(canvas, 0, 0, leftW, H, 0, 0, leftW, H);
+    const leftCands = await inferCanvas(session, cLeft, 0, 0);
+    for (const c of leftCands) {
+      if (c.x1 >= leftW - seamMargin) continue; // 剔除切缝截断半牌
+      allCandidates.push(c);
+    }
+
+    // 右半高清切片 (0.42*W ~ W)
+    const rightX = Math.round(0.42 * W);
+    const rightW = W - rightX;
+    const cRight = document.createElement('canvas');
+    cRight.width = rightW;
+    cRight.height = H;
+    cRight.getContext('2d').drawImage(canvas, rightX, 0, rightW, H, 0, 0, rightW, H);
+    const rightCands = await inferCanvas(session, cRight, rightX, 0);
+    for (const c of rightCands) {
+      if (c.x0 <= rightX + seamMargin) continue; // 剔除切缝截断半牌
+      allCandidates.push(c);
+    }
   }
 
-  // 3. 增强 NMS 去重与物理尺寸过滤
-  allCandidates.sort((a, b) => b.conf - a.conf);
+  // 3. 尺度自适应 NMS 去重与物理尺寸过滤
+  const scaleRef = Math.min(2.0, Math.max(0.4, W / 1600));
+  const minW = 65 * scaleRef;
+  const minH = 85 * scaleRef;
+  const maxDim = 340 * scaleRef;
+  const proxX = 45 * scaleRef;
+  const proxY = 55 * scaleRef;
+
+  allCandidates.sort((a, b) => b.rankConf - a.rankConf);
   const keep = [];
   for (const c of allCandidates) {
     const w = c.x1 - c.x0;
     const h = c.y1 - c.y0;
     // 物理尺寸与长宽比过滤：剔除边缘小碎片、细条及巨大阴影
-    if (w < 70 || h < 90 || w > 320 || h > 320) continue;
+    if (w < minW || h < minH || w > maxDim || h > maxDim) continue;
     const aspect = w / h;
     if (aspect < 0.40 || aspect > 2.3) continue;
 
-    // 剔除最右/最左边缘的怪异牌背（桌布边缘反光）
-    const rawName = NAMES[c.cls];
-    if (c.x1 > W - 20 && rawName === '背' && w > 180) continue;
+    // 剔除最右边缘的怪异牌背（桌布边缘反光）
+    const tileCode = YOLO_CLASS_CODES[c.cls];
+    if (c.x1 > W - 20 * scaleRef && tileCode === 'BACK' && w > 180 * scaleRef) continue;
 
     const cx = (c.x0 + c.x1) / 2;
     const cy = (c.y0 + c.y1) / 2;
@@ -230,7 +309,7 @@ export async function detect(canvas) {
       }
       const kcx = (k.x0 + k.x1) / 2;
       const kcy = (k.y0 + k.y1) / 2;
-      if (Math.abs(cx - kcx) < 45 && Math.abs(cy - kcy) < 55) {
+      if (Math.abs(cx - kcx) < proxX && Math.abs(cy - kcy) < proxY) {
         suppress = true;
         break;
       }
@@ -241,13 +320,19 @@ export async function detect(canvas) {
   }
 
   const dets = keep
-    .map((c) => ({
-      raw: NAMES[c.cls],
-      tile: toTileCode(NAMES[c.cls]),
-      conf: Math.round(c.conf * 1000) / 1000,
-      box: [Math.round(c.x0), Math.round(c.y0), Math.round(c.x1), Math.round(c.y1)],
-    }))
+    .map((c) => {
+      const code = YOLO_CLASS_CODES[c.cls] || null;
+      return {
+        raw: code,
+        tile: code,
+        conf: Math.round(c.conf * 1000) / 1000,
+        box: [Math.round(c.x0), Math.round(c.y0), Math.round(c.x1), Math.round(c.y1)],
+      };
+    })
     .filter((d) => d.tile && d.conf >= CONF);
+
+  // 4. 物理颜色特征精校（六条/九条、纯绿牌背）
+  refineByColorFeatures(canvas, dets);
 
   dets.sort((a, b) => (a.box[1] - b.box[1]) || (a.box[0] - b.box[0]));
   return dets;

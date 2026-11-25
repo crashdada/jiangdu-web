@@ -4,7 +4,7 @@
 // 牌码：
 //   数牌  1w..9w (万) / 1t..9t (条) / 1b..9b (筒)
 //   字牌  E 东  S 南  W 西  N 北  Z 中  F 发  B 白
-//   花    chun xia qiu dong
+//   花    f1 春  f2 夏  f3 秋  f4 冬
 
 const HONORS = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'];
 const FLOWER_HU = 4;
